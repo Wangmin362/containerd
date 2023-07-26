@@ -381,6 +381,7 @@ func hostDirFromRoots(roots []string) func(string) (string, error) {
 
 // registryHosts is the registry hosts to be used by the resolver.
 func (c *criService) registryHosts(ctx context.Context, auth *runtime.AuthConfig, updateClientFn config.UpdateClientFunc) docker.RegistryHosts {
+	// 分割ConfigPath指向的路径
 	paths := filepath.SplitList(c.config.Registry.ConfigPath)
 	if len(paths) > 0 {
 		hostOptions := config.HostOptions{

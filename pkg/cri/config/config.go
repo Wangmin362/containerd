@@ -203,6 +203,9 @@ type Registry struct {
 	// ConfigPath is a path to the root directory containing registry-specific
 	// configurations.
 	// If ConfigPath is set, the rest of the registry specific options are ignored.
+	// TODO 1、这个配置应该如何使用？ 2、什么时候需要这个配置？为什么需要这个配置？
+	// TODO 3、这个配置和底下的Mirrors,Configs,Auths配置有何区别？ 可以完全取代么？
+	// TODO 4、为什么ConfigPath指向的路径中的配置修改之后无需重启containerd？
 	ConfigPath string `toml:"config_path" json:"configPath"`
 	// Mirrors are namespace to mirror mapping for all namespaces.
 	// This option will not be used when ConfigPath is provided.
@@ -462,6 +465,7 @@ func ValidatePluginConfig(ctx context.Context, c *PluginConfig) error {
 		}
 	}
 
+	// 校验参数，不允许ConfigPath以及Mirrors同时设置
 	useConfigPath := c.Registry.ConfigPath != ""
 	if len(c.Registry.Mirrors) > 0 {
 		if useConfigPath {
