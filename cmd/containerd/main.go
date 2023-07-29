@@ -35,7 +35,9 @@ func init() {
 }
 
 func main() {
+	// TODO 实例化containerd
 	app := command.App()
+	// 实际上这里的app是一个命令行工具封装的，app.Run的运行也是固定的，主要是为了执行app.Action,所以只需要重点分析app.Action干了啥
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "containerd: %s\n", err)
 		os.Exit(1)

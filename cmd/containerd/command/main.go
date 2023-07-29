@@ -118,8 +118,8 @@ can be used and modified as necessary as a custom configuration.`
 		defer cancel()
 
 		// Only try to load the config if it either exists, or the user explicitly
-		// told us to load this path.
-		configPath := context.GlobalString("config")
+		// told us to load this6 path.
+		configPath := context.GlobalString("config") // 获取配置文件路径
 		_, err := os.Stat(configPath)
 		if !os.IsNotExist(err) || context.GlobalIsSet("config") {
 			if err := srvconfig.LoadConfig(configPath, config); err != nil {
@@ -127,7 +127,7 @@ can be used and modified as necessary as a custom configuration.`
 			}
 		}
 
-		// Apply flags to the config
+		// Apply flags to the config 解析/etc/containerd/config.toml配置文件到config对象当中
 		if err := applyFlags(context, config); err != nil {
 			return err
 		}
@@ -142,12 +142,12 @@ can be used and modified as necessary as a custom configuration.`
 			config.TTRPC.GID = config.GRPC.GID
 		}
 
-		// Make sure top-level directories are created early.
+		// Make sure top-level directories are created early. 确保一些目录必须存在
 		if err := server.CreateTopLevelDirectories(config); err != nil {
 			return err
 		}
 
-		// Stop if we are registering or unregistering against Windows SCM.
+		// Stop if we are registering or unregistering against Windows SCM. 仅和Windows有关
 		stop, err := registerUnregisterService(config.Root)
 		if err != nil {
 			logrus.Fatal(err)
@@ -156,7 +156,7 @@ can be used and modified as necessary as a custom configuration.`
 			return nil
 		}
 
-		done := handleSignals(ctx, signals, serverC, cancel)
+		done := handleSignals(ctx, signals, serverC, cancel) // 处理退出信号
 		// start the signal handler as soon as we can to make sure that
 		// we don't miss any signals during boot
 		signal.Notify(signals, handledSignals...)
@@ -201,7 +201,7 @@ can be used and modified as necessary as a custom configuration.`
 				return
 			}
 
-			// Launch as a Windows Service if necessary
+			// Launch as a Windows Service if necessary 这里主要是在适配windows，直接忽略
 			if err := launchService(server, done); err != nil {
 				logrus.Fatal(err)
 			}
@@ -250,7 +250,7 @@ can be used and modified as necessary as a custom configuration.`
 			}
 			serve(ctx, l, server.ServeMetrics)
 		}
-		// setup the ttrpc endpoint
+		// setup the ttrpc endpoint TODO TTRPC干了啥？
 		tl, err := sys.GetLocalListener(config.TTRPC.Address, config.TTRPC.UID, config.TTRPC.GID)
 		if err != nil {
 			return fmt.Errorf("failed to get listener for main ttrpc endpoint: %w", err)
