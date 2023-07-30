@@ -192,6 +192,7 @@ can be used and modified as necessary as a custom configuration.`
 		go func() {
 			defer close(chsrv)
 
+			// TODO 这里干了啥？
 			server, err := server.New(ctx, config)
 			if err != nil {
 				select {
@@ -213,7 +214,7 @@ can be used and modified as necessary as a custom configuration.`
 		}()
 
 		var server *server.Server
-		select {
+		select { // 等待Containerd Server初始化完成
 		case <-ctx.Done():
 			return ctx.Err()
 		case r := <-chsrv:
@@ -224,12 +225,13 @@ can be used and modified as necessary as a custom configuration.`
 		}
 
 		// We don't send the server down serverC directly in the goroutine above because we need it lower down.
-		select {
+		select { // TODO 这里为啥这么写，没看懂上面的注释
 		case <-ctx.Done():
 			return ctx.Err()
 		case serverC <- server:
 		}
 
+		// 开启containerd的debug功能，开启后可以通过/debug/vars, /debug/pprof这样的URL查看containerd部分数据
 		if config.Debug.Address != "" {
 			var l net.Listener
 			if isLocalAddress(config.Debug.Address) {
@@ -243,6 +245,7 @@ can be used and modified as necessary as a custom configuration.`
 			}
 			serve(ctx, l, server.ServeDebug)
 		}
+		// containerd的指数据
 		if config.Metrics.Address != "" {
 			l, err := net.Listen("tcp", config.Metrics.Address)
 			if err != nil {
@@ -250,7 +253,7 @@ can be used and modified as necessary as a custom configuration.`
 			}
 			serve(ctx, l, server.ServeMetrics)
 		}
-		// setup the ttrpc endpoint TODO TTRPC干了啥？
+		// setup the ttrpc endpoint 创建containerd.sock.ttrpc文件
 		tl, err := sys.GetLocalListener(config.TTRPC.Address, config.TTRPC.UID, config.TTRPC.GID)
 		if err != nil {
 			return fmt.Errorf("failed to get listener for main ttrpc endpoint: %w", err)
@@ -264,7 +267,7 @@ can be used and modified as necessary as a custom configuration.`
 			}
 			serve(ctx, l, server.ServeTCP)
 		}
-		// setup the main grpc endpoint
+		// setup the main grpc endpoint 创建container.sock文件
 		l, err := sys.GetLocalListener(config.GRPC.Address, config.GRPC.UID, config.GRPC.GID)
 		if err != nil {
 			return fmt.Errorf("failed to get listener for main endpoint: %w", err)
@@ -282,6 +285,7 @@ can be used and modified as necessary as a custom configuration.`
 			if err := notifyReady(ctx); err != nil {
 				log.G(ctx).WithError(err).Warn("notify ready failed")
 			}
+			// containerd成功启动
 			log.G(ctx).Infof("containerd successfully booted in %fs", time.Since(start).Seconds())
 			<-done
 		case <-done:

@@ -102,19 +102,24 @@ const (
 )
 
 // Registration contains information for registering a plugin
+// 实际上registration抽象的是一个插件注册信息
 type Registration struct {
 	// Type of the plugin
+	// 插件类型
 	Type Type
 	// ID of the plugin
 	ID string
 	// Config specific to the plugin
+	// 每个插件的配置
 	Config interface{}
 	// Requires is a list of plugins that the registered plugin requires to be available
+	// 当前插件的依赖插件
 	Requires []Type
 
 	// InitFn is called when initializing a plugin. The registration and
 	// context are passed in. The init function may modify the registration to
 	// add exports, capabilities and platform support declarations.
+	// 插件的初始化函数
 	InitFn func(*InitContext) (interface{}, error)
 	// Disable the plugin from loading
 	Disable bool

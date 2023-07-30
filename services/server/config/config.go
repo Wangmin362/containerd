@@ -32,44 +32,61 @@ import (
 // NOTE: Any new map fields added also need to be handled in mergeConfig.
 
 // Config provides containerd configuration data for the server
+// containerd的全局配置
 type Config struct {
-	// Version of the config file
+	// 指定使用container配置的哪个版本的语法，现在一般都是使用版本2语法
 	Version int `toml:"version"`
 	// Root is the path to a directory where containerd will store persistent data
+	// 存放元数据的位置，譬如镜像，运行时数据等等，默认值为：/var/lib/containerd
 	Root string `toml:"root"`
 	// State is the path to a directory where containerd will store transient data
+	// state配置用于设置containerd的socket文件的存放位置
 	State string `toml:"state"`
 	// TempDir is the path to a directory where to place containerd temporary files
+	// TODO 临时目录是用来干嘛的？
 	TempDir string `toml:"temp"`
 	// PluginDir is the directory for dynamic plugins to be stored
+	// TODO containerd的动态插件原理是啥？
 	PluginDir string `toml:"plugin_dir"`
 	// GRPC configuration settings
 	GRPC GRPCConfig `toml:"grpc"`
 	// TTRPC configuration settings
+	// 所谓的TTRPC实际上就是GRPC Over TLS，也就是加了密的GRPC
 	TTRPC TTRPCConfig `toml:"ttrpc"`
 	// Debug and profiling settings
+	// 是否开启debug功能，开启后可以通过诸如/debug/vars, /debug/pprof类似的URL查看containerd的一些数据
 	Debug Debug `toml:"debug"`
 	// Metrics and monitoring settings
+	// containerd的指标配置
 	Metrics MetricsConfig `toml:"metrics"`
 	// DisabledPlugins are IDs of plugins to disable. Disabled plugins won't be
 	// initialized and started.
+	// 希望被禁用的插件
 	DisabledPlugins []string `toml:"disabled_plugins"`
 	// RequiredPlugins are IDs of required plugins. Containerd exits if any
 	// required plugin doesn't exist or fails to be initialized or started.
+	// TODO 什么叫做必须的插件？
 	RequiredPlugins []string `toml:"required_plugins"`
 	// Plugins provides plugin specific configuration for the initialization of a plugin
+	// 各个插件的配置
 	Plugins map[string]toml.Tree `toml:"plugins"`
 	// OOMScore adjust the containerd's oom score
+	// TODO 如何理解这个参数？
 	OOMScore int `toml:"oom_score"`
 	// Cgroup specifies cgroup information for the containerd daemon process
+	// TODO 这个参数有啥用？ 默认值是空的
 	Cgroup CgroupConfig `toml:"cgroup"`
 	// ProxyPlugins configures plugins which are communicated to over GRPC
+	// TODO containerd的代理插件有啥用？
 	ProxyPlugins map[string]ProxyPlugin `toml:"proxy_plugins"`
 	// Timeouts specified as a duration
+	// 超时参数设置
 	Timeouts map[string]string `toml:"timeouts"`
 	// Imports are additional file path list to config files that can overwrite main config file fields
+	// 这个参数还是比较容易理解，通过这个配置可以把containerd参数分散写在多个地方，然后通过imports参数导入进来
 	Imports []string `toml:"imports"`
 	// StreamProcessors configuration
+	// TODO 如何理解流处理器
 	StreamProcessors map[string]StreamProcessor `toml:"stream_processors"`
 }
 

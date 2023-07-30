@@ -99,9 +99,11 @@ func CreateTopLevelDirectories(config *srvconfig.Config) error {
 
 // New creates and initializes a new containerd server
 func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
+	// 主要是为了设置OOM参数以及Cgroup
 	if err := apply(ctx, config); err != nil {
 		return nil, err
 	}
+	// 设置超时参数，这里使用一个Map来保存
 	for key, sec := range config.Timeouts {
 		d, err := time.ParseDuration(sec)
 		if err != nil {
@@ -109,14 +111,17 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 		}
 		timeout.Set(key, d)
 	}
+	// TODO 加载插件
 	plugins, err := LoadPlugins(ctx, config)
 	if err != nil {
 		return nil, err
 	}
+	// TODO StreamProcessor是啥玩意？
 	for id, p := range config.StreamProcessors {
 		diff.RegisterProcessor(diff.BinaryHandler(id, p.Returns, p.Accepts, p.Path, p.Args, p.Env))
 	}
 
+	// TODO 增加了GRPC Server Option参数
 	serverOpts := []grpc.ServerOption{
 		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
 			otelgrpc.StreamServerInterceptor(),
@@ -129,17 +134,21 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 			unaryNamespaceInterceptor,
 		)),
 	}
+	// 设置GRPC可以消息的最大阈值
 	if config.GRPC.MaxRecvMsgSize > 0 {
 		serverOpts = append(serverOpts, grpc.MaxRecvMsgSize(config.GRPC.MaxRecvMsgSize))
 	}
+	// 设置GRPC发送消息的最大阈值
 	if config.GRPC.MaxSendMsgSize > 0 {
 		serverOpts = append(serverOpts, grpc.MaxSendMsgSize(config.GRPC.MaxSendMsgSize))
 	}
+	// 实例化TTRPCServer，所谓的TTRPC，实际上就设置GRPC ober TLS
 	ttrpcServer, err := newTTRPCServer()
 	if err != nil {
 		return nil, err
 	}
 	tcpServerOpts := serverOpts
+	// 设置TLS证书
 	if config.GRPC.TCPTLSCert != "" {
 		log.G(ctx).Info("setting up tls on tcp GRPC services...")
 
@@ -222,17 +231,20 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 
 		// load the plugin specific configuration if it is provided
 		if p.Config != nil {
+			// 反序列化当前插件的配置
 			pc, err := config.Decode(p)
 			if err != nil {
 				return nil, err
 			}
 			initContext.Config = pc
 		}
+		// 执行插件的InitFn函数，并实例化插件实体
 		result := p.Init(initContext)
 		if err := initialized.Add(result); err != nil {
 			return nil, fmt.Errorf("could not add plugin result to plugin set: %w", err)
 		}
 
+		// 获取实例化的插件实体，并且获取实例化插件实体时的错误
 		instance, err := result.Instance()
 		if err != nil {
 			if plugin.IsSkipPlugin(err) {
@@ -246,6 +258,7 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 			continue
 		}
 
+		// 每删除一个插件，都需要从required中删除此插件
 		delete(required, reqID)
 		// check for grpc services that should be registered with the server
 		if src, ok := instance.(grpcService); ok {
@@ -260,6 +273,7 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 
 		s.plugins = append(s.plugins, result)
 	}
+	// 如果插件加载完成，但是还有必要的插件没有加载，那么只能退出containerd的初始化
 	if len(required) != 0 {
 		var missing []string
 		for id := range required {
@@ -269,6 +283,7 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 	}
 
 	// register services after all plugins have been initialized
+	// 注册服务
 	for _, service := range grpcServices {
 		if err := service.Register(grpcServer); err != nil {
 			return nil, err
@@ -387,14 +402,17 @@ func (s *Server) Wait() {
 // of all plugins.
 func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Registration, error) {
 	// load all plugins into containerd
+	// 如果没有指定插件的位置，那么默认从/var/lib/containerd/plugins目录中加载插件
 	path := config.PluginDir
 	if path == "" {
 		path = filepath.Join(config.Root, "plugins")
 	}
+	// 实际上这里目前是空的，并不会加载任何插件
 	if err := plugin.Load(path); err != nil {
 		return nil, err
 	}
 	// load additional plugins that don't automatically register themselves
+	// TODO content插件究竟干了啥？
 	plugin.Register(&plugin.Registration{
 		Type: plugin.ContentPlugin,
 		ID:   "content",
@@ -405,6 +423,7 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 	})
 
 	clients := &proxyClients{}
+	// TODO 代理插件干嘛用的？
 	for name, pp := range config.ProxyPlugins {
 		var (
 			t plugin.Type
@@ -450,6 +469,7 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 		filter = srvconfig.V1DisabledFilter
 	}
 	// return the ordered graph for plugins
+	// TODO 猜测这里时再通过插件的依赖关系构建一个插件图
 	return plugin.Graph(filter(config.DisabledPlugins)), nil
 }
 
