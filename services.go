@@ -37,7 +37,7 @@ import (
 	"github.com/containerd/containerd/snapshots"
 )
 
-type services struct {
+type services struct { // TODO 分析其中的每一项的作用
 	contentStore         content.Store
 	imageStore           images.Store
 	containerStore       containers.Store

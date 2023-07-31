@@ -115,7 +115,7 @@ type FetchConfig struct {
 	TraceHTTP bool
 }
 
-// NewFetchConfig returns the default FetchConfig from cli flags
+// NewFetchConfig returns the default FetchConfig from cli flags 从用户输入的命令行中获取Fetch配置
 func NewFetchConfig(ctx context.Context, clicontext *cli.Context) (*FetchConfig, error) {
 	resolver, err := commands.GetResolver(ctx, clicontext)
 	if err != nil {
@@ -170,7 +170,7 @@ func Fetch(ctx context.Context, client *containerd.Client, ref string, config *F
 	progress := make(chan struct{})
 
 	go func() {
-		if config.ProgressOutput != nil {
+		if config.ProgressOutput != nil { // 显示下载镜像的进度条
 			// no progress bar, because it hides some debug logs
 			ShowProgress(pctx, ongoing, client.ContentStore(), config.ProgressOutput)
 		}

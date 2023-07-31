@@ -93,7 +93,7 @@ command. As part of this process, we do the following:
 		}
 		defer cancel()
 
-		if !context.BoolT("local") {
+		if !context.BoolT("local") { // 这里的local实际上指的ctr image pull命令的local参数
 			ch, err := commands.NewStaticCredentials(ctx, context, ref)
 			if err != nil {
 				return err
@@ -140,7 +140,7 @@ command. As part of this process, we do the following:
 			return client.Transfer(ctx, reg, is, transfer.WithProgress(pf))
 		}
 
-		ctx, done, err := client.WithLease(ctx)
+		ctx, done, err := client.WithLease(ctx) // TODO lease是干吗用的？
 		if err != nil {
 			return err
 		}
@@ -152,6 +152,7 @@ command. As part of this process, we do the following:
 			return err
 		}
 
+		// TODO 如何理解fetch动作？
 		img, err := content.Fetch(ctx, client, ref, config)
 		if err != nil {
 			return err
@@ -180,6 +181,7 @@ command. As part of this process, we do the following:
 			p = append(p, platforms.DefaultSpec())
 		}
 
+		// TODO 如何理解unpacking动作
 		start := time.Now()
 		for _, platform := range p {
 			fmt.Printf("unpacking %s %s...\n", platforms.Format(platform), img.Target.Digest)

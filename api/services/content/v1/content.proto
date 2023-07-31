@@ -25,6 +25,7 @@ import "google/protobuf/empty.proto";
 option go_package = "github.com/containerd/containerd/api/services/content/v1;content";
 
 // Content provides access to a content addressable storage system.
+// 内容服务应该是抽象的一个存储系统
 service Content {
 	// Info returns information about a committed object.
 	//

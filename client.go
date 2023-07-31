@@ -210,7 +210,7 @@ func NewWithConn(conn *grpc.ClientConn, opts ...ClientOpt) (*Client, error) {
 }
 
 // Client is the client to interact with containerd and its various services
-// using a uniform interface
+// using a uniform interface containerd客户端工具
 type Client struct {
 	services
 	connMu    sync.Mutex
@@ -422,7 +422,7 @@ func (c *Client) Fetch(ctx context.Context, ref string, opts ...RemoteOpt) (imag
 	}
 	defer done(ctx)
 
-	img, err := c.fetch(ctx, fetchCtx, ref, 0)
+	img, err := c.fetch(ctx, fetchCtx, ref, 0) // 如何理解fetch这个动作？
 	if err != nil {
 		return images.Image{}, err
 	}
