@@ -57,6 +57,7 @@ const (
 	// RuntimePluginV2 implements a runtime v2
 	RuntimePluginV2 Type = "io.containerd.runtime.v2"
 	// ServicePlugin implements a internal service
+	// TODO 如何理解Service插件？
 	ServicePlugin Type = "io.containerd.service.v1"
 	// GRPCPlugin implements a grpc service
 	GRPCPlugin Type = "io.containerd.grpc.v1"

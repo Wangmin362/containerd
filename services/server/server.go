@@ -111,7 +111,11 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 		}
 		timeout.Set(key, d)
 	}
-	// TODO 加载插件
+	// 加载插件：
+	// 1、动态加载plugin_dir参数指定的目录中的插件，实际上这个功能在containerd 1.8以前都没有实现，所以这一步并没有加载任何插件
+	// 2、注册content插件
+	// 3、注册代理插件，TODO 分析代理插件的具体作用
+	// 4、根据插件的依赖，对于插件注册信息进行排序，显然越底层的依赖应该放在前面
 	plugins, err := LoadPlugins(ctx, config)
 	if err != nil {
 		return nil, err
@@ -209,6 +213,7 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 	for _, r := range config.RequiredPlugins {
 		required[r] = struct{}{}
 	}
+	// 遍历插件注册信息，根据插件的配置实例化每一个插件
 	for _, p := range plugins {
 		id := p.URI()
 		reqID := id
@@ -449,6 +454,7 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 			log.G(ctx).WithField("type", pp.Type).Warn("unknown proxy plugin type")
 		}
 
+		// 注册代理插件
 		plugin.Register(&plugin.Registration{
 			Type: t,
 			ID:   name,

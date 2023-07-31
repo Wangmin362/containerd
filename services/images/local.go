@@ -37,6 +37,7 @@ import (
 )
 
 func init() {
+	// 注册image-service插件，这个插件需要metadata-plugin以及gc-plugin
 	plugin.Register(&plugin.Registration{
 		Type: plugin.ServicePlugin,
 		ID:   services.ImagesService,
@@ -45,10 +46,12 @@ func init() {
 			plugin.GCPlugin,
 		},
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
+			// 获取第一个metadata-plugin插件
 			m, err := ic.Get(plugin.MetadataPlugin)
 			if err != nil {
 				return nil, err
 			}
+			// 获取第一个gc-plugin插件
 			g, err := ic.Get(plugin.GCPlugin)
 			if err != nil {
 				return nil, err
@@ -63,10 +66,12 @@ func init() {
 	})
 }
 
+// TODO 为啥不对外暴露这个抽象接口？
 type gcScheduler interface {
 	ScheduleAndWait(context.Context) (gc.Stats, error)
 }
 
+// 实现images_grpc.pb.go grpc定义的接口
 type local struct {
 	store     images.Store
 	gc        gcScheduler

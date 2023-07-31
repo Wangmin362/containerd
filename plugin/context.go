@@ -27,11 +27,12 @@ import (
 )
 
 // InitContext is used for plugin initialization
+// 插件初始化上下文
 type InitContext struct {
 	Context           context.Context
-	Root              string
-	State             string
-	Config            interface{}
+	Root              string      // containerd元数据存放位置，默认为：/var/lib/containerd
+	State             string      // containerd socket文件存放位置，默认为：/run/containerd
+	Config            interface{} // 插件的配置信息，改属性是通过Registration注册信息中的Config反序列化而来的
 	Address           string
 	TTRPCAddress      string
 	RegisterReadiness func() func()
@@ -41,6 +42,7 @@ type InitContext struct {
 
 	Meta *Meta // plugins can fill in metadata at init.
 
+	// 包含containerd当前所有注册的插件
 	plugins *Set
 }
 
@@ -126,6 +128,7 @@ func (ps *Set) Add(p *Plugin) error {
 }
 
 // Get returns the first plugin by its type
+// TODO 一个类型的插件可能会有多个，为什么这里直接返回第一个？
 func (ps *Set) Get(t Type) (interface{}, error) {
 	for _, v := range ps.byTypeAndID[t] {
 		return v.Instance()
