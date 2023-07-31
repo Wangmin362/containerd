@@ -162,6 +162,7 @@ func Load(path string) (err error) {
 }
 
 // Register allows plugins to register
+// 每个插件将会在自己的Init()函数调用这个函数注册自己
 func Register(r *Registration) {
 	register.Lock()
 	defer register.Unlock()
