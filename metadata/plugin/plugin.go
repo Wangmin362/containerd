@@ -59,6 +59,7 @@ type BoltConfig struct {
 	// Both modes share backing data, while "shared" will reduce total
 	// bandwidth across namespaces, at the cost of allowing access to any blob
 	// just by knowing its digest.
+	// TODO 这个配置是干嘛用的？
 	ContentSharingPolicy string `toml:"content_sharing_policy"`
 }
 
@@ -161,6 +162,7 @@ func init() {
 					return
 				}
 			}()
+			// 数据保存在/var/lib/containerd/io.containerd.metadata.v1.bolt/meta.db文件当中
 			db, err := bolt.Open(path, 0644, &options)
 			close(doneCh)
 			if err != nil {

@@ -39,6 +39,7 @@ import (
 
 type contentStore struct {
 	// TODO 为什么contentStore又组合了content.Store接口，这玩意本来就是为了实现content.Store接口的嘛
+	// 原因是content.store需要使用这个接口的能力来实现content.Store接口，实际上依赖的就是local.store
 	content.Store
 	// 这里的DB可以认为就是boltdb
 	db     *DB
@@ -78,14 +79,16 @@ func (cs *contentStore) Info(ctx context.Context, dgst digest.Digest) (content.I
 	}
 
 	var info content.Info
+	// 开启只读事务
 	if err := view(ctx, cs.db, func(tx *bolt.Tx) error {
-		// 桶路径为: /v1/<namespace>/content/blob/<digest>
+		// 获取/v1/<namespace>/content/blob/<digest>桶
 		bkt := getBlobBucket(tx, ns, dgst)
 		if bkt == nil {
 			return fmt.Errorf("content digest %v: %w", dgst, errdefs.ErrNotFound)
 		}
 
 		info.Digest = dgst
+		// 读取/v1/<namespace>/content/blob/<digest>桶中的各个信息
 		return readInfo(&info, bkt)
 	}); err != nil {
 		return content.Info{}, err
@@ -107,12 +110,15 @@ func (cs *contentStore) Update(ctx context.Context, info content.Info, fieldpath
 	updated := content.Info{
 		Digest: info.Digest,
 	}
+	// 开启写事务
 	if err := update(ctx, cs.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/content/blob/<digest>桶
 		bkt := getBlobBucket(tx, ns, info.Digest)
 		if bkt == nil {
 			return fmt.Errorf("content digest %v: %w", info.Digest, errdefs.ErrNotFound)
 		}
 
+		// 读取/v1/<namespace>/content/blob/<digest>桶中的所有数据到updated当汇总
 		if err := readInfo(&updated, bkt); err != nil {
 			return fmt.Errorf("info %q: %w", info.Digest, err)
 		}
@@ -140,6 +146,7 @@ func (cs *contentStore) Update(ctx context.Context, info content.Info, fieldpath
 			// Set mutable fields
 			updated.Labels = info.Labels
 		}
+		// 校验label信息
 		if err := validateInfo(&updated); err != nil {
 			return err
 		}
@@ -152,7 +159,9 @@ func (cs *contentStore) Update(ctx context.Context, info content.Info, fieldpath
 	return updated, nil
 }
 
+// Walk 遍历所有满足条件的Blob
 func (cs *contentStore) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) error {
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return err
@@ -165,12 +174,15 @@ func (cs *contentStore) Walk(ctx context.Context, fn content.WalkFunc, fs ...str
 
 	// TODO: Batch results to keep from reading all info into memory
 	var infos []content.Info
+	// 开启只读事务
 	if err := view(ctx, cs.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/content/blob桶
 		bkt := getBlobsBucket(tx, ns)
 		if bkt == nil {
 			return nil
 		}
 
+		// 遍历/v1/<namespace>/content/blob桶，读取所有的blob信息，并过滤去满足条件的blob
 		return bkt.ForEach(func(k, v []byte) error {
 			dgst, err := digest.Parse(string(k))
 			if err != nil {
@@ -205,7 +217,9 @@ func (cs *contentStore) Walk(ctx context.Context, fn content.WalkFunc, fs ...str
 	return nil
 }
 
+// Delete 删除指定摘要的blob
 func (cs *contentStore) Delete(ctx context.Context, dgst digest.Digest) error {
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return err
@@ -214,15 +228,19 @@ func (cs *contentStore) Delete(ctx context.Context, dgst digest.Digest) error {
 	cs.l.RLock()
 	defer cs.l.RUnlock()
 
+	// 开启写事务
 	return update(ctx, cs.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/content/blob/<digest>桶
 		bkt := getBlobBucket(tx, ns, dgst)
 		if bkt == nil {
 			return fmt.Errorf("content digest %v: %w", dgst, errdefs.ErrNotFound)
 		}
 
+		// 删除/v1/<namespace>/content/blob/<digest>桶
 		if err := getBlobsBucket(tx, ns).DeleteBucket([]byte(dgst.String())); err != nil {
 			return err
 		}
+		// 移除当前blob的lease信息
 		if err := removeContentLease(ctx, tx, dgst); err != nil {
 			return err
 		}
@@ -236,6 +254,7 @@ func (cs *contentStore) Delete(ctx context.Context, dgst digest.Digest) error {
 }
 
 func (cs *contentStore) ListStatuses(ctx context.Context, fs ...string) ([]content.Status, error) {
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return nil, err
@@ -247,12 +266,15 @@ func (cs *contentStore) ListStatuses(ctx context.Context, fs ...string) ([]conte
 	}
 
 	brefs := map[string]string{}
+	// 开启读事务
 	if err := view(ctx, cs.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/content/ingests桶
 		bkt := getIngestsBucket(tx, ns)
 		if bkt == nil {
 			return nil
 		}
 
+		// 遍历/v1/<namespace>/content/ingests桶
 		return bkt.ForEach(func(k, v []byte) error {
 			if v == nil {
 				// TODO(dmcgowan): match name and potentially labels here
@@ -266,6 +288,7 @@ func (cs *contentStore) ListStatuses(ctx context.Context, fs ...string) ([]conte
 
 	statuses := make([]content.Status, 0, len(brefs))
 	for k, bref := range brefs {
+		// 这里真正读取的是文件
 		status, err := cs.Store.Status(ctx, bref)
 		if err != nil {
 			if errdefs.IsNotFound(err) {
@@ -285,10 +308,12 @@ func (cs *contentStore) ListStatuses(ctx context.Context, fs ...string) ([]conte
 }
 
 func getRef(tx *bolt.Tx, ns, ref string) string {
+	// 获取/v1/<namespace>/content/ingests/<ref>桶
 	bkt := getIngestBucket(tx, ns, ref)
 	if bkt == nil {
 		return ""
 	}
+	// 读取/v1/<namespace>/content/ingests/<ref>桶
 	v := bkt.Get(bucketKeyRef)
 	if len(v) == 0 {
 		return ""
@@ -296,14 +321,19 @@ func getRef(tx *bolt.Tx, ns, ref string) string {
 	return string(v)
 }
 
+// Status 实现思路很简单，先查Boltdb这个KV数据库，如果没有找到元数据，就直接返回错误；如果找到了，就通过local.store读取
+// /var/lib/contaienrd/io.containerd.content.v1.content/ingest目录中的文件数据
 func (cs *contentStore) Status(ctx context.Context, ref string) (content.Status, error) {
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return content.Status{}, err
 	}
 
 	var bref string
+	// 开启读事务
 	if err := view(ctx, cs.db, func(tx *bolt.Tx) error {
+		// 读取/v1/<namespace>/content/ingests/<ref>桶中的内容
 		bref = getRef(tx, ns, ref)
 		if bref == "" {
 			return fmt.Errorf("reference %v: %w", ref, errdefs.ErrNotFound)
@@ -323,6 +353,7 @@ func (cs *contentStore) Status(ctx context.Context, ref string) (content.Status,
 }
 
 func (cs *contentStore) Abort(ctx context.Context, ref string) error {
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return err
@@ -331,20 +362,26 @@ func (cs *contentStore) Abort(ctx context.Context, ref string) error {
 	cs.l.RLock()
 	defer cs.l.RUnlock()
 
+	// 开启读事务
 	return update(ctx, cs.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/content/ingests桶
 		ibkt := getIngestsBucket(tx, ns)
 		if ibkt == nil {
 			return fmt.Errorf("reference %v: %w", ref, errdefs.ErrNotFound)
 		}
+		// 获取/v1/<namespace>/content/ingests/<ref>桶
 		bkt := ibkt.Bucket([]byte(ref))
 		if bkt == nil {
 			return fmt.Errorf("reference %v: %w", ref, errdefs.ErrNotFound)
 		}
+		// 读取/v1/<namespace>/content/ingests/<ref>桶中key为ref的值
 		bref := string(bkt.Get(bucketKeyRef))
 		if bref == "" {
 			return fmt.Errorf("reference %v: %w", ref, errdefs.ErrNotFound)
 		}
+		// 读取/v1/<namespace>/content/ingests/<ref>桶中key为expected的值
 		expected := string(bkt.Get(bucketKeyExpected))
+		// 删除桶
 		if err := ibkt.DeleteBucket([]byte(ref)); err != nil {
 			return err
 		}
@@ -375,6 +412,7 @@ func (cs *contentStore) Writer(ctx context.Context, opts ...content.WriterOpt) (
 	if wOpts.Ref == "" {
 		return nil, fmt.Errorf("ref must not be empty: %w", errdefs.ErrInvalidArgument)
 	}
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return nil, err
@@ -388,13 +426,17 @@ func (cs *contentStore) Writer(ctx context.Context, opts ...content.WriterOpt) (
 		exists bool
 		bref   string
 	)
+	// 开启写事务
 	if err := update(ctx, cs.db, func(tx *bolt.Tx) error {
 		var shared bool
 		if wOpts.Desc.Digest != "" {
+			// 获取/v1/<namespace>/content/blob/<digest>桶
 			cbkt := getBlobBucket(tx, ns, wOpts.Desc.Digest)
 			if cbkt != nil {
 				// Add content to lease to prevent other reference removals
 				// from effecting this object during a provided lease
+				// 在/v1/<namespace>/leases/<id>/content桶写入摘要信息
+				// TODO 这里写入Lease的意义何在？为了保障什么？
 				if err := addContentLease(ctx, tx, wOpts.Desc.Digest); err != nil {
 					return fmt.Errorf("unable to lease content: %w", err)
 				}
@@ -772,6 +814,7 @@ func readInfo(info *content.Info, bkt *bolt.Bucket) error {
 	return nil
 }
 
+// 写入blob信息
 func writeInfo(info *content.Info, bkt *bolt.Bucket) error {
 	if err := boltutil.WriteTimestamps(bkt, info.CreatedAt, info.UpdatedAt); err != nil {
 		return err

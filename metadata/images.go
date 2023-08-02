@@ -37,6 +37,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+// 镜像元数据的增删改查
 type imageStore struct {
 	db *DB
 }
@@ -49,23 +50,28 @@ func NewImageStore(db *DB) images.Store {
 func (s *imageStore) Get(ctx context.Context, name string) (images.Image, error) {
 	var image images.Image
 
+	// 获取当前请求的名称空间
 	namespace, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return images.Image{}, err
 	}
 
+	// 开启读事务
 	if err := view(ctx, s.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/images桶
 		bkt := getImagesBucket(tx, namespace)
 		if bkt == nil {
 			return fmt.Errorf("image %q: %w", name, errdefs.ErrNotFound)
 		}
 
+		// 获取/v1/<namespace>/images/<name>桶
 		ibkt := bkt.Bucket([]byte(name))
 		if ibkt == nil {
 			return fmt.Errorf("image %q: %w", name, errdefs.ErrNotFound)
 		}
 
 		image.Name = name
+		// 读取/v1/<namespace>/images/<name>桶中的镜像数据
 		if err := readImage(&image, ibkt); err != nil {
 			return fmt.Errorf("image %q: %w", name, err)
 		}
@@ -79,6 +85,7 @@ func (s *imageStore) Get(ctx context.Context, name string) (images.Image, error)
 }
 
 func (s *imageStore) List(ctx context.Context, fs ...string) ([]images.Image, error) {
+	// 获取当前请求的名称空间
 	namespace, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return nil, err
@@ -91,23 +98,28 @@ func (s *imageStore) List(ctx context.Context, fs ...string) ([]images.Image, er
 
 	var m []images.Image
 	if err := view(ctx, s.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/images桶
 		bkt := getImagesBucket(tx, namespace)
 		if bkt == nil {
 			return nil // empty store
 		}
 
+		// 遍历/v1/<namespace>/images桶
 		return bkt.ForEach(func(k, v []byte) error {
 			var (
 				image = images.Image{
 					Name: string(k),
 				}
+				// 获取/v1/<namespace>/images/<name>桶
 				kbkt = bkt.Bucket(k)
 			)
 
+			// 读取/v1/<namespace>/images/<name>桶中的镜像数据
 			if err := readImage(&image, kbkt); err != nil {
 				return err
 			}
 
+			// 只有当前镜像符合过滤器的要求才会被保留
 			if filter.Match(adaptImage(image)) {
 				m = append(m, image)
 			}
@@ -121,21 +133,25 @@ func (s *imageStore) List(ctx context.Context, fs ...string) ([]images.Image, er
 }
 
 func (s *imageStore) Create(ctx context.Context, image images.Image) (images.Image, error) {
+	// 获取当前请求的名称空间
 	namespace, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return images.Image{}, err
 	}
 
+	// 开启写事务
 	if err := update(ctx, s.db, func(tx *bolt.Tx) error {
+		// 校验镜像
 		if err := validateImage(&image); err != nil {
 			return err
 		}
-
+		// 如果/v1/<namespace>/images桶不存在，就创建这个桶
 		bkt, err := createImagesBucket(tx, namespace)
 		if err != nil {
 			return err
 		}
 
+		// 创建/v1/<namespace>/images/<name>桶
 		ibkt, err := bkt.CreateBucket([]byte(image.Name))
 		if err != nil {
 			if err != bolt.ErrBucketExists {
@@ -155,6 +171,7 @@ func (s *imageStore) Create(ctx context.Context, image images.Image) (images.Ima
 			image.CreatedAt = time.Now().UTC()
 		}
 		image.UpdatedAt = image.CreatedAt
+		// 写入镜像的各个数据到不同的桶当中
 		return writeImage(ibkt, &image)
 	}); err != nil {
 		return images.Image{}, err
@@ -309,25 +326,31 @@ func validateTarget(target *ocispec.Descriptor) error {
 }
 
 func readImage(image *images.Image, bkt *bolt.Bucket) error {
+	// 从/v1/<namespace>/images/<name>/createdat桶中获取创建时间
+	// 从/v1/<namespace>/images/<name>/updatedat桶中获取更新时间
 	if err := boltutil.ReadTimestamps(bkt, &image.CreatedAt, &image.UpdatedAt); err != nil {
 		return err
 	}
 
+	// 从/v1/<namespace>/images/<name>/labels桶中读取标签数据
 	labels, err := boltutil.ReadLabels(bkt)
 	if err != nil {
 		return err
 	}
 	image.Labels = labels
 
+	// 从/v1/<namespace>/images/<name>/annotations桶中读取注解数据
 	image.Target.Annotations, err = boltutil.ReadAnnotations(bkt)
 	if err != nil {
 		return err
 	}
 
+	// 获取/v1/<namespace>/images/<name>/target桶
 	tbkt := bkt.Bucket(bucketKeyTarget)
 	if tbkt == nil {
 		return errors.New("unable to read target bucket")
 	}
+	// 遍历/v1/<namespace>/images/<name>/target桶，获取摘要、MediaType、镜像大小信息
 	return tbkt.ForEach(func(k, v []byte) error {
 		if v == nil {
 			return nil // skip it? a bkt maybe?

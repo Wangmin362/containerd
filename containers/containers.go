@@ -31,28 +31,33 @@ type Container struct {
 	// ID uniquely identifies the container in a namespace.
 	//
 	// This property is required and cannot be changed after creation.
+	// 容器的ID应该也是一个摘要
 	ID string
 
 	// Labels provide metadata extension for a container.
 	//
 	// These are optional and fully mutable.
+	// 容器的标签是怎么存储的？
 	Labels map[string]string
 
 	// Image specifies the image reference used for a container.
 	//
 	// This property is optional and mutable.
+	// 容器使用的镜像
 	Image string
 
 	// Runtime specifies which runtime should be used when launching container
 	// tasks.
 	//
 	// This property is required and immutable.
+	// TODO 用于指定当前容器的运行时
 	Runtime RuntimeInfo
 
 	// Spec should carry the runtime specification used to implement the
 	// container.
 	//
 	// This field is required but mutable.
+	// TODO 如何理解typeurl.Any这个类型？
 	Spec typeurl.Any
 
 	// SnapshotKey specifies the snapshot key to use for the container's root
@@ -61,6 +66,7 @@ type Container struct {
 	// task create request.
 	//
 	// This field is not required but mutable.
+	// TODO 这玩意干嘛的？
 	SnapshotKey string
 
 	// Snapshotter specifies the snapshotter name used for rootfs
@@ -80,6 +86,7 @@ type Container struct {
 	// SandboxID is an identifier of sandbox this container belongs to.
 	//
 	// This property is optional, but can't be changed after creation.
+	// 当前容器的沙箱ID
 	SandboxID string
 }
 
@@ -90,6 +97,7 @@ type RuntimeInfo struct {
 }
 
 // Store interacts with the underlying container storage
+// 抽象容器的增删改查
 type Store interface {
 	// Get a container using the id.
 	//

@@ -28,6 +28,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+// 用于名称空间的增删改查
 type namespaceStore struct {
 	tx *bolt.Tx
 }

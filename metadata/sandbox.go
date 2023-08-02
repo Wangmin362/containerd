@@ -33,6 +33,7 @@ import (
 	"go.etcd.io/bbolt"
 )
 
+// 用于Sandbox的增删改查
 type sandboxStore struct {
 	db *DB
 }

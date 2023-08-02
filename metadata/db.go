@@ -96,6 +96,8 @@ type DB struct {
 	// a garbage collection to ensure the database is clean. This tracks
 	// the number of dirty operations. This should be updated and read
 	// atomically if outside of wlock.Lock.
+	// TODO 似乎是用于表明当前删除了多少个容器，垃圾收集器根据这个值去收集垃圾
+	// 这个值会收到容器、blob删除的影响
 	dirty uint32
 
 	// dirtySS and dirtyCS flags keeps track of datastores which have had

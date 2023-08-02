@@ -213,22 +213,27 @@ func imagesBucketPath(namespace string) [][]byte {
 	return [][]byte{bucketKeyVersion, []byte(namespace), bucketKeyObjectImages}
 }
 
+// 如果/v1/<namespace>/images桶不存在，就创建这个桶
 func createImagesBucket(tx *bolt.Tx, namespace string) (*bolt.Bucket, error) {
 	return createBucketIfNotExists(tx, imagesBucketPath(namespace)...)
 }
 
+// 获取/v1/<namespace>/images桶
 func getImagesBucket(tx *bolt.Tx, namespace string) *bolt.Bucket {
 	return getBucket(tx, imagesBucketPath(namespace)...)
 }
 
+// 如果/v1/<namespace>/containers桶不存在，就创建桶
 func createContainersBucket(tx *bolt.Tx, namespace string) (*bolt.Bucket, error) {
 	return createBucketIfNotExists(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectContainers)
 }
 
+// 获取/v1/<namespace>/containers桶
 func getContainersBucket(tx *bolt.Tx, namespace string) *bolt.Bucket {
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectContainers)
 }
 
+// 获取/v1/<namespace>/containers/<id>桶
 func getContainerBucket(tx *bolt.Tx, namespace, id string) *bolt.Bucket {
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectContainers, []byte(id))
 }
@@ -257,15 +262,18 @@ func createBlobBucket(tx *bolt.Tx, namespace string, dgst digest.Digest) (*bolt.
 	return bkt.CreateBucket([]byte(dgst.String()))
 }
 
+// 获取/v1/<namespace>/content/blob桶
 func getBlobsBucket(tx *bolt.Tx, namespace string) *bolt.Bucket {
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectContent, bucketKeyObjectBlob)
 }
 
+// 获取/v1/<namespace>/content/blob/<digest>桶
 func getBlobBucket(tx *bolt.Tx, namespace string, dgst digest.Digest) *bolt.Bucket {
 	// 与其说是桶，倒不如说是名称空间的隔离，或者说是模拟etcd的目录结构：/v1/<namespace>/content/blob/<digest>
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectContent, bucketKeyObjectBlob, []byte(dgst.String()))
 }
 
+// 获取/v1/<namespace>/content/ingests桶
 func getIngestsBucket(tx *bolt.Tx, namespace string) *bolt.Bucket {
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectContent, bucketKeyObjectIngests)
 }
@@ -278,6 +286,7 @@ func createIngestBucket(tx *bolt.Tx, namespace, ref string) (*bolt.Bucket, error
 	return bkt, nil
 }
 
+// 获取/v1/<namespace>/content/ingests/<ref>桶
 func getIngestBucket(tx *bolt.Tx, namespace, ref string) *bolt.Bucket {
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectContent, bucketKeyObjectIngests, []byte(ref))
 }

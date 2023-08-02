@@ -36,6 +36,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+// 解决boltdb，实现对于容器元数据的增删改查
 type containerStore struct {
 	db *DB
 }
@@ -48,6 +49,7 @@ func NewContainerStore(db *DB) containers.Store {
 }
 
 func (s *containerStore) Get(ctx context.Context, id string) (containers.Container, error) {
+	// 获取当前请求的名称空间
 	namespace, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return containers.Container{}, err
@@ -55,12 +57,15 @@ func (s *containerStore) Get(ctx context.Context, id string) (containers.Contain
 
 	container := containers.Container{ID: id}
 
+	// 执行boltdb的只读事务
 	if err := view(ctx, s.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/containers/<id> 桶
 		bkt := getContainerBucket(tx, namespace, id)
 		if bkt == nil {
 			return fmt.Errorf("container %q in namespace %q: %w", id, namespace, errdefs.ErrNotFound)
 		}
 
+		// 从/v1/<namespace>/containers/<id>桶中读取容器数据
 		if err := readContainer(&container, bkt); err != nil {
 			return fmt.Errorf("failed to read container %q: %w", id, err)
 		}
@@ -73,12 +78,15 @@ func (s *containerStore) Get(ctx context.Context, id string) (containers.Contain
 	return container, nil
 }
 
+// List 过滤出满足条件的所有容器
 func (s *containerStore) List(ctx context.Context, fs ...string) ([]containers.Container, error) {
+	// 获取当前请求指定的名称空间
 	namespace, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return nil, err
 	}
 
+	// 过滤器，排除掉不关心的容器
 	filter, err := filters.ParseAll(fs...)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", err.Error(), errdefs.ErrInvalidArgument)
@@ -86,23 +94,29 @@ func (s *containerStore) List(ctx context.Context, fs ...string) ([]containers.C
 
 	var m []containers.Container
 
+	// 开启只读事务
 	if err := view(ctx, s.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/containers桶
 		bkt := getContainersBucket(tx, namespace)
 		if bkt == nil {
 			return nil // empty store
 		}
 
+		// 遍历/v1/<namespace>/containers桶中的所有容器
 		return bkt.ForEach(func(k, v []byte) error {
+			// 获取/v1/<namespace>/containers/<id>桶
 			cbkt := bkt.Bucket(k)
 			if cbkt == nil {
 				return nil
 			}
 			container := containers.Container{ID: string(k)}
 
+			// 读取/v1/<namespace>/containers/<id>桶中的数据
 			if err := readContainer(&container, cbkt); err != nil {
 				return fmt.Errorf("failed to read container %q: %w", string(k), err)
 			}
 
+			// 如果满足过滤条件就留下
 			if filter.Match(adaptContainer(container)) {
 				m = append(m, container)
 			}
@@ -116,21 +130,26 @@ func (s *containerStore) List(ctx context.Context, fs ...string) ([]containers.C
 }
 
 func (s *containerStore) Create(ctx context.Context, container containers.Container) (containers.Container, error) {
+	// 获取当前请求的名称空间
 	namespace, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return containers.Container{}, err
 	}
 
+	// 校验容器的各个字段是否有效
 	if err := validateContainer(&container); err != nil {
 		return containers.Container{}, fmt.Errorf("create container failed validation: %w", err)
 	}
 
+	// 开启一个写事务
 	if err := update(ctx, s.db, func(tx *bolt.Tx) error {
+		// 如果/v1/<namespace>/containers/桶不存在，就创建桶
 		bkt, err := createContainersBucket(tx, namespace)
 		if err != nil {
 			return err
 		}
 
+		// 创建/v1/<namespace>/containers/<id>桶，如果当前桶已经存在就不允许创建桶
 		cbkt, err := bkt.CreateBucket([]byte(container.ID))
 		if err != nil {
 			if err == bolt.ErrBucketExists {
@@ -141,6 +160,7 @@ func (s *containerStore) Create(ctx context.Context, container containers.Contai
 
 		container.CreatedAt = time.Now().UTC()
 		container.UpdatedAt = container.CreatedAt
+		// 把容器的各个数据保存在boltdb的桶当中
 		if err := writeContainer(cbkt, &container); err != nil {
 			return fmt.Errorf("failed to write container %q: %w", container.ID, err)
 		}
@@ -153,28 +173,35 @@ func (s *containerStore) Create(ctx context.Context, container containers.Contai
 	return container, nil
 }
 
+// Update 更新容器的各个属性
 func (s *containerStore) Update(ctx context.Context, container containers.Container, fieldpaths ...string) (containers.Container, error) {
+	// 获取当前请求的名称空间
 	namespace, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return containers.Container{}, err
 	}
 
+	// 容器ID必须存在
 	if container.ID == "" {
 		return containers.Container{}, fmt.Errorf("must specify a container id: %w", errdefs.ErrInvalidArgument)
 	}
 
 	var updated containers.Container
+	// 开启写事务
 	if err := update(ctx, s.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/containers桶
 		bkt := getContainersBucket(tx, namespace)
 		if bkt == nil {
 			return fmt.Errorf("cannot update container %q in namespace %q: %w", container.ID, namespace, errdefs.ErrNotFound)
 		}
 
+		// 获取/v1/<namespace>/containers/<id>桶
 		cbkt := bkt.Bucket([]byte(container.ID))
 		if cbkt == nil {
 			return fmt.Errorf("container %q: %w", container.ID, errdefs.ErrNotFound)
 		}
 
+		// 在桶中读取容器各个数据
 		if err := readContainer(&updated, cbkt); err != nil {
 			return fmt.Errorf("failed to read container %q: %w", container.ID, err)
 		}
@@ -254,17 +281,21 @@ func (s *containerStore) Update(ctx context.Context, container containers.Contai
 }
 
 func (s *containerStore) Delete(ctx context.Context, id string) error {
+	// 获取当前请求的名称空间
 	namespace, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return err
 	}
 
+	// 开启写事务
 	return update(ctx, s.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/containers桶
 		bkt := getContainersBucket(tx, namespace)
 		if bkt == nil {
 			return fmt.Errorf("cannot delete container %q in namespace %q: %w", id, namespace, errdefs.ErrNotFound)
 		}
 
+		// 删除这个桶
 		if err := bkt.DeleteBucket([]byte(id)); err != nil {
 			if err == bolt.ErrBucketNotFound {
 				err = fmt.Errorf("container %v: %w", id, errdefs.ErrNotFound)
@@ -312,21 +343,25 @@ func validateContainer(container *containers.Container) error {
 }
 
 func readContainer(container *containers.Container, bkt *bolt.Bucket) error {
+	// 读取/v1/<namespace>/containers/<id>/labels桶中的所有标签
 	labels, err := boltutil.ReadLabels(bkt)
 	if err != nil {
 		return err
 	}
 	container.Labels = labels
 
+	// 从/v1/<namespace>/containers/<id>/createdat桶中获取创建时间
+	// 从/v1/<namespace>/containers/<id>/updatedat桶中获取更新时间
 	if err := boltutil.ReadTimestamps(bkt, &container.CreatedAt, &container.UpdatedAt); err != nil {
 		return err
 	}
 
+	// 遍历/v1/<namespace>/containers/<id>桶中的所有内容
 	return bkt.ForEach(func(k, v []byte) error {
 		switch string(k) {
-		case string(bucketKeyImage):
+		case string(bucketKeyImage): // 获取镜像数据
 			container.Image = string(v)
-		case string(bucketKeyRuntime):
+		case string(bucketKeyRuntime): // 获取容器的运行时
 			rbkt := bkt.Bucket(bucketKeyRuntime)
 			if rbkt == nil {
 				return nil // skip runtime. should be an error?
@@ -342,24 +377,24 @@ func readContainer(container *containers.Container, bkt *bolt.Bucket) error {
 				return err
 			}
 			container.Runtime.Options = any
-		case string(bucketKeySpec):
+		case string(bucketKeySpec): // 获取容器的Spec
 			var any types.Any
 			if err := proto.Unmarshal(v, &any); err != nil {
 				return err
 			}
 			container.Spec = &any
-		case string(bucketKeySnapshotKey):
+		case string(bucketKeySnapshotKey): //获取容器的snapshotKey
 			container.SnapshotKey = string(v)
-		case string(bucketKeySnapshotter):
+		case string(bucketKeySnapshotter): // 获取容器的snapshotter
 			container.Snapshotter = string(v)
-		case string(bucketKeyExtensions):
+		case string(bucketKeyExtensions): // 获取容器的extensions
 			extensions, err := boltutil.ReadExtensions(bkt)
 			if err != nil {
 				return err
 			}
 
 			container.Extensions = extensions
-		case string(bucketKeySandboxID):
+		case string(bucketKeySandboxID): // 获取容器的沙箱ID
 			container.SandboxID = string(v)
 		}
 
@@ -367,6 +402,7 @@ func readContainer(container *containers.Container, bkt *bolt.Bucket) error {
 	})
 }
 
+// 把容器的各个数据保存在boltdb的桶当中
 func writeContainer(bkt *bolt.Bucket, container *containers.Container) error {
 	if err := boltutil.WriteTimestamps(bkt, container.CreatedAt, container.UpdatedAt); err != nil {
 		return err

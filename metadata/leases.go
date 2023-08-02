@@ -369,6 +369,7 @@ func removeSnapshotLease(ctx context.Context, tx *bolt.Tx, snapshotter, key stri
 	return bkt.Delete([]byte(key))
 }
 
+// 在/v1/<namespace>/leases/<id>/content桶写入摘要信息
 func addContentLease(ctx context.Context, tx *bolt.Tx, dgst digest.Digest) error {
 	lid, ok := leases.FromContext(ctx)
 	if !ok {
@@ -399,17 +400,20 @@ func removeContentLease(ctx context.Context, tx *bolt.Tx, dgst digest.Digest) er
 		return nil
 	}
 
+	// 获取当前请求的名称空间
 	namespace, ok := namespaces.Namespace(ctx)
 	if !ok {
 		panic("namespace must already be checked")
 	}
 
+	// 获取/v1/<namespace>/leases/<id>/content
 	bkt := getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectLeases, []byte(lid), bucketKeyObjectContent)
 	if bkt == nil {
 		// Key does not exist so we return nil
 		return nil
 	}
 
+	// 删除/v1/<namespace>/leases/<id>/content桶中key为dest的键值对
 	return bkt.Delete([]byte(dgst.String()))
 }
 

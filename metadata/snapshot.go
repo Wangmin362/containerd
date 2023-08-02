@@ -41,6 +41,7 @@ const (
 	labelSnapshotRef      = "containerd.io/snapshot.ref"
 )
 
+// 用于快照的增删改查
 type snapshotter struct {
 	snapshots.Snapshotter
 	name string
