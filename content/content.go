@@ -38,14 +38,16 @@ import (
 // Note that until ingestion is complete, its content is not visible through
 // Provider or Manager. Once ingestion is complete, it is no longer exposed
 // through IngestManager.
+// TODO blob和ingest的区别是啥？
 type Store interface {
-	Manager
-	Provider
-	IngestManager
-	Ingester
+	Manager       // Manager实际上就是对于镜像层获取信息、修改信息、遍历镜像层以及删除镜像层的封装，blob的读取接口
+	Provider      // 用于读取镜像层， blob的写入接口
+	IngestManager // 这个接口实际上是对于ingest的管理，主要是获取ingest信息以及删除, ingest的读取接口
+	Ingester      // ingest的写入接口
 }
 
 // ReaderAt extends the standard io.ReaderAt interface with reporting of Size and io.Closer
+// 这里使用 io.ReaderAt 来读取数据，也就是说用户可以指定偏移。 TODO 这种读取方式是否在位端点续传做准备？
 type ReaderAt interface {
 	io.ReaderAt
 	io.Closer
@@ -53,7 +55,7 @@ type ReaderAt interface {
 }
 
 // Provider provides a reader interface for specific content
-// TODO 如何理解这个接口？
+// 此接口可以用于读取某镜像层（通过摘要）数据，并且可以指定偏移量
 type Provider interface {
 	// ReaderAt only requires desc.Digest to be set.
 	// Other fields in the descriptor may be used internally for resolving
@@ -62,7 +64,7 @@ type Provider interface {
 }
 
 // Ingester writes content
-// TODO 如何理解这个接口？
+// ingest的写入接口
 type Ingester interface {
 	// Writer initiates a writing operation (aka ingestion). A single ingestion
 	// is uniquely identified by its ref, provided using a WithRef option.
@@ -75,7 +77,7 @@ type Ingester interface {
 // IngestManager provides methods for managing ingestions. An ingestion is a
 // not-yet-complete writing operation initiated using Ingester and identified
 // by a ref string.
-// TODO 如何理解这个接口？
+// 这个接口实际上是对于ingest的管理，主要是获取ingest信息以及删除
 type IngestManager interface {
 	// Status returns the status of the provided ref.
 	Status(ctx context.Context, ref string) (Status, error)
@@ -83,9 +85,11 @@ type IngestManager interface {
 	// ListStatuses returns the status of any active ingestions whose ref match
 	// the provided regular expression. If empty, all active ingestions will be
 	// returned.
+	// 返回所有镜像的信息，并根据过滤器过滤不需要的镜像
 	ListStatuses(ctx context.Context, filters ...string) ([]Status, error)
 
 	// Abort completely cancels the ingest operation targeted by ref.
+	// 移除镜像所指向的ingest的所有数据
 	Abort(ctx context.Context, ref string) error
 }
 
@@ -117,12 +121,12 @@ type Status struct {
 type WalkFunc func(Info) error
 
 // Manager provides methods for inspecting, listing and removing content.
-// TODO 如何理解这个接口？
+// Manager实际上就是对于镜像层获取信息、修改信息、遍历镜像层以及删除镜像层的封装
 type Manager interface {
 	// Info will return metadata about content available in the content store.
 	//
 	// If the content is not present, ErrNotFound will be returned.
-	// 获取摘要所对应的镜像层的大小、创建时间、更新时间、标签信息，dgst相当于镜像层的ID
+	// 获取摘要所对应的镜像层的大小、创建时间、更新时间、标签信息，dgst相当于镜像层的ID，Info是直接通过读取操作系统中的镜像层文件返回的
 	Info(ctx context.Context, dgst digest.Digest) (Info, error)
 
 	// Update updates mutable information related to content.
@@ -130,14 +134,18 @@ type Manager interface {
 	// fields will be updated.
 	// Mutable fields:
 	//  labels.*
+	// 更新镜像层的标签信息 TODO 看起来containerd并没有实现镜像层信息更新
 	Update(ctx context.Context, info Info, fieldpaths ...string) (Info, error)
 
 	// Walk will call fn for each item in the content store which
 	// match the provided filters. If no filters are given all
 	// items will be walked.
+	// 遍历containerd存储的镜像层，并根据指定的过滤器过滤不满足要求的镜像层，这里的过滤器可以根据摘要、标签或者大小，不过根据源码显示
+	// 根据大小过滤以及根据标签过滤并没有实现
 	Walk(ctx context.Context, fn WalkFunc, filters ...string) error
 
 	// Delete removes the content from the store.
+	// 根据摘要删除某个镜像层
 	Delete(ctx context.Context, dgst digest.Digest) error
 }
 

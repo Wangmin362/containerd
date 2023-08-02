@@ -43,6 +43,7 @@ func OpenReader(p string) (content.ReaderAt, error) {
 		return nil, fmt.Errorf("blob not found: %w", errdefs.ErrNotFound)
 	}
 
+	// 这里直接使用golang sdk的文件对象来实现此功能
 	fp, err := os.Open(p)
 	if err != nil {
 		if !os.IsNotExist(err) {

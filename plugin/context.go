@@ -50,7 +50,7 @@ type InitContext struct {
 func NewContext(ctx context.Context, r *Registration, plugins *Set, root, state string) *InitContext {
 	return &InitContext{
 		Context: ctx,
-		Root:    filepath.Join(root, r.URI()),
+		Root:    filepath.Join(root, r.URI()), // 注意，这里修改了每个插件的root目录，规则为：<root>/<plugin-type>.<plugin-id>
 		State:   filepath.Join(state, r.URI()),
 		Meta: &Meta{
 			Exports: map[string]string{},

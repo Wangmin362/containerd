@@ -71,11 +71,14 @@ const (
 	// DiffPlugin implements a differ
 	DiffPlugin Type = "io.containerd.differ.v1"
 	// MetadataPlugin implements a metadata store
-	// 元数据插件虽然没有对外暴露服务，但是元数据插件是其它插件的依赖，而目前所有实现的元数据插件只有一个
-	// 元数据插件是在其它插件初始化的时候被引入的，一般通过ic.Get(plugin.MetadataPlugin)方式获取元数据插件
+	// 1、元数据插件虽然没有对外暴露服务，但是元数据插件是其它插件的依赖，而目前所有实现的元数据插件只有一个
+	// 2、元数据插件是在其它插件初始化的时候被引入的，一般通过ic.Get(plugin.MetadataPlugin)方式获取元数据插件
+	// 3、顾名思义，元数据插件保存的是镜像的元数据，譬如摘要信息、大小、创建时间、修改时间、标签等等数据，这些数据为了能够更加方便的
+	// 检索，元数据插件借助于boltdb KV数据库特性，把这些信息存储到了boltdb当中
 	MetadataPlugin Type = "io.containerd.metadata.v1"
 	// ContentPlugin implements a content store
-	// ContentPlugin实现了content.store接口
+	// 1、ContentPlugin实现了content.store接口，实现了对于blob以及ingest的增删改查
+	// 2、本质上ContentPlugin是对于文件的增删改查，没有涉及任何的数据库
 	ContentPlugin Type = "io.containerd.content.v1"
 	// GCPlugin implements garbage collection policy
 	GCPlugin Type = "io.containerd.gc.v1"

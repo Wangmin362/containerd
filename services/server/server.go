@@ -222,6 +222,7 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 		}
 		log.G(ctx).WithField("type", p.Type).Infof("loading plugin %q...", id)
 
+		// 注意，这里修改了每个插件的root目录，规则为：<root>/<plugin-type>.<plugin-id>
 		initContext := plugin.NewContext(
 			ctx,
 			p,
@@ -425,6 +426,8 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
 			// TODO 这里暴露的数据有何作用？
 			ic.Meta.Exports["root"] = ic.Root
+			// 注意，每个插件在初始化的时候都被修改了root目录，规则为：<root>/<plugin-type>.<plugin-id>
+			// 对于content插件来说，root目录为：/var/lib/containerd/io.containerd.content.v1.content
 			return local.NewStore(ic.Root)
 		},
 	})

@@ -69,6 +69,7 @@ type store struct {
 }
 
 // NewStore returns a local content store
+// TODO 似乎containerd目前并不支持给镜像层存储标签，都是使用的这个函数去初始化的
 func NewStore(root string) (content.Store, error) {
 	return NewLabeledStore(root, nil)
 }
@@ -79,7 +80,7 @@ func NewStore(root string) (content.Store, error) {
 // require labels and should use `NewStore`. `NewLabeledStore` is primarily
 // useful for tests or standalone implementations.
 func NewLabeledStore(root string, ls LabelStore) (content.Store, error) {
-	// 创建 /var/lib/content/ingest目录？？ 应该创建的是/var/lib/content/io.containerd.content.v1.content/ingest目录吧
+	// 创建目录/var/lib/content/io.containerd.content.v1.content/ingest
 	if err := os.MkdirAll(filepath.Join(root, "ingest"), 0777); err != nil {
 		return nil, err
 	}
@@ -90,12 +91,17 @@ func NewLabeledStore(root string, ls LabelStore) (content.Store, error) {
 	}, nil
 }
 
+// Info Content服务实现Info非常简单，就是根据摘要信息拼接出这个摘要对应的镜像层的位置，然后当成一个普通文件读取其大小、创建时间、更新时间等
 func (s *store) Info(ctx context.Context, dgst digest.Digest) (content.Info, error) {
+	// blob为binary large object的缩写，也就是二进制形式的大对象
+	// blob的概念可以参考这个连接：https://www.cloudflare.com/zh-cn/learning/cloud/what-is-blob-storage/
+	// 这里实现的逻辑很简单，就是根据摘要信息拼接处此摘要指向的镜像层的路径，目录为：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	p, err := s.blobPath(dgst)
 	if err != nil {
 		return content.Info{}, fmt.Errorf("calculating blob info path: %w", err)
 	}
 
+	// 判断这个摘要对应的镜像层是否存在，毕竟在操作系统中，bolb就是一个普通文件而已，还是有可能被用户删除的
 	fi, err := os.Stat(p)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -111,6 +117,7 @@ func (s *store) Info(ctx context.Context, dgst digest.Digest) (content.Info, err
 			return content.Info{}, err
 		}
 	}
+	// 直接读取操作系统中文件的大小、修改时间、创建时间等等
 	return s.info(dgst, fi, labels), nil
 }
 
@@ -126,7 +133,7 @@ func (s *store) info(dgst digest.Digest, fi os.FileInfo, labels map[string]strin
 
 // ReaderAt returns an io.ReaderAt for the blob.
 func (s *store) ReaderAt(ctx context.Context, desc ocispec.Descriptor) (content.ReaderAt, error) {
-	// 拼接出当前摘要所指向的镜像层的路径：/var/lib/containerd/
+	// 拼接出当前摘要所指向的镜像层的路径：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	p, err := s.blobPath(desc.Digest)
 	if err != nil {
 		return nil, fmt.Errorf("calculating blob path for ReaderAt: %w", err)
@@ -145,11 +152,13 @@ func (s *store) ReaderAt(ctx context.Context, desc ocispec.Descriptor) (content.
 // While this is safe to do concurrently, safe exist-removal logic must hold
 // some global lock on the store.
 func (s *store) Delete(ctx context.Context, dgst digest.Digest) error {
+	// 找到镜像层的存储路径：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	bp, err := s.blobPath(dgst)
 	if err != nil {
 		return fmt.Errorf("calculating blob path for delete: %w", err)
 	}
 
+	// 删除文件
 	if err := os.RemoveAll(bp); err != nil {
 		if !os.IsNotExist(err) {
 			return err
@@ -161,16 +170,20 @@ func (s *store) Delete(ctx context.Context, dgst digest.Digest) error {
 	return nil
 }
 
+// Update 用于更新镜像层的标签信息，TODO 看起来containerd并没有实现镜像层信息更新
 func (s *store) Update(ctx context.Context, info content.Info, fieldpaths ...string) (content.Info, error) {
+	// 如果没有初始化标签存储器，肯定是不能更改的
 	if s.ls == nil {
 		return content.Info{}, fmt.Errorf("update not supported on immutable content store: %w", errdefs.ErrFailedPrecondition)
 	}
 
+	// 获取镜像层的存储路径：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	p, err := s.blobPath(info.Digest)
 	if err != nil {
 		return content.Info{}, fmt.Errorf("calculating blob path for update: %w", err)
 	}
 
+	// 判断镜像层是否存在
 	fi, err := os.Stat(p)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -229,6 +242,7 @@ func (s *store) Update(ctx context.Context, info content.Info, fieldpaths ...str
 }
 
 func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) error {
+	// 获取blob对象的存储路径：/var/lib/containerd/io.containerd.content.v1.content/blobs
 	root := filepath.Join(s.root, "blobs")
 
 	filter, err := filters.ParseAll(fs...)
@@ -237,10 +251,12 @@ func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) err
 	}
 
 	var alg digest.Algorithm
+	// 中规中矩的遍历目录
 	return filepath.Walk(root, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
+		// 如果当前镜像层的算法不可用，直接退出
 		if !fi.IsDir() && !alg.Available() {
 			return nil
 		}
@@ -249,6 +265,7 @@ func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) err
 		// handled in case the layout gets corrupted. This isn't strict enough
 		// and may spew bad data.
 
+		// 忽略根目录
 		if path == root {
 			return nil
 		}
@@ -288,6 +305,7 @@ func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) err
 	})
 }
 
+// Status 实际上就是通过镜像的信息
 func (s *store) Status(ctx context.Context, ref string) (content.Status, error) {
 	return s.status(s.ingestRoot(ref))
 }
@@ -464,6 +482,7 @@ func (s *store) Writer(ctx context.Context, opts ...content.WriterOpt) (content.
 		return nil, fmt.Errorf("ref must not be empty: %w", errdefs.ErrInvalidArgument)
 	}
 	var lockErr error
+	// 要想写入这个ingest文件，首先必须锁住这个文件，否则其他人可能会对这个文件进行读写
 	for count := uint64(0); count < 10; count++ {
 		if err := tryLock(wOpts.Ref); err != nil {
 			if !errdefs.IsUnavailable(err) {
@@ -613,7 +632,9 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 
 // Abort an active transaction keyed by ref. If the ingest is active, it will
 // be cancelled. Any resources associated with the ingest will be cleaned.
+// 移除镜像所指向的ingest的所有数据
 func (s *store) Abort(ctx context.Context, ref string) error {
+	// 获取镜像的ingest路径：/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
 	root := s.ingestRoot(ref)
 	if err := os.RemoveAll(root); err != nil {
 		if os.IsNotExist(err) {
@@ -642,15 +663,18 @@ func (s *store) blobPath(dgst digest.Digest) (string, error) {
 		    ├── 05a79c7279f71f86a2a0d05eb72fcb56ea36139150f0a75cd87e80a4272e4e39
 	*/
 	// 拼接当前摘要所指向的镜像层的路径，路径为containerd的root配置指向的位置，拼接上blobs/sha256/<digest>
-	// 默认root配置为：/var/lib/containerd，因此路径为：/var/lib/containerd/blobs/sha256/<digest>
-	// TODO 实际的路径应该是：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
+	// 默认root配置为：/var/lib/containerd，但是每个插件在初始化的时候会被修改root目录，对于content插件来说root目录为：/var/lib/containerd/io.containerd.content.v1.content
+	// 因此路径为：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	return filepath.Join(s.root, "blobs", dgst.Algorithm().String(), dgst.Encoded()), nil
 }
 
+// 获取镜像的ingest信息，位置在：/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
 func (s *store) ingestRoot(ref string) string {
 	// we take a digest of the ref to keep the ingest paths constant length.
 	// Note that this is not the current or potential digest of incoming content.
+	// TODO 这里的ref应该就是镜像信息，这个方法应该是通过镜像名获取镜像的摘要
 	dgst := digest.FromString(ref)
+	// 获取镜像的ingest路径：/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
 	return filepath.Join(s.root, "ingest", dgst.Encoded())
 }
 
