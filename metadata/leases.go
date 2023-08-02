@@ -35,6 +35,7 @@ import (
 
 // leaseManager manages the create/delete lifecycle of leases
 // and also returns existing leases
+// 实现Lease资源对象的增删改查
 type leaseManager struct {
 	db *DB
 }

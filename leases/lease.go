@@ -28,6 +28,7 @@ type Opt func(*Lease) error
 type DeleteOpt func(context.Context, *DeleteOptions) error
 
 // Manager is used to create, list, and remove leases
+// 实现Lease资源对象的增删改查
 type Manager interface {
 	Create(context.Context, ...Opt) (Lease, error)
 	Delete(context.Context, Lease, ...DeleteOpt) error
