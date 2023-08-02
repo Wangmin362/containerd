@@ -75,6 +75,7 @@ const (
 	// 2、元数据插件是在其它插件初始化的时候被引入的，一般通过ic.Get(plugin.MetadataPlugin)方式获取元数据插件
 	// 3、顾名思义，元数据插件保存的是镜像的元数据，譬如摘要信息、大小、创建时间、修改时间、标签等等数据，这些数据为了能够更加方便的
 	// 检索，元数据插件借助于boltdb KV数据库特性，把这些信息存储到了boltdb当中
+	// 4、元数据插件本身提供的功能非常简单，主要就是提供一个读事务从boltdb中读取数据，或者提供一个写事务，从boltdb中写入数据。
 	MetadataPlugin Type = "io.containerd.metadata.v1"
 	// ContentPlugin implements a content store
 	// 1、ContentPlugin实现了content.store接口，实现了对于blob以及ingest的增删改查

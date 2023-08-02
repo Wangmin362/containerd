@@ -91,14 +91,17 @@ func init() {
 			ContentSharingPolicy: SharingPolicyShared,
 		},
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
+			// 创建/var/lib/containerd/io.containerd.metadata.v1.bolt目录
 			if err := os.MkdirAll(ic.Root, 0711); err != nil {
 				return nil, err
 			}
+			// 获取内容插件
 			cs, err := ic.Get(plugin.ContentPlugin)
 			if err != nil {
 				return nil, err
 			}
 
+			// 获取快照插件 TODO 快照插件的具体作用还需要分析
 			snapshottersRaw, err := ic.GetByType(plugin.SnapshotPlugin)
 			if err != nil {
 				return nil, err
@@ -118,6 +121,7 @@ func init() {
 			}
 
 			shared := true
+			// TODO 导出的变量有啥用？
 			ic.Meta.Exports["policy"] = SharingPolicyShared
 			if cfg, ok := ic.Config.(*BoltConfig); ok {
 				if cfg.ContentSharingPolicy != "" {
@@ -133,6 +137,7 @@ func init() {
 				}
 			}
 
+			// /var/lib/containerd/io.containerd.metadata.v1.bolt/meta.db文件
 			path := filepath.Join(ic.Root, "meta.db")
 			ic.Meta.Exports["path"] = path
 
@@ -172,6 +177,7 @@ func init() {
 
 			// 从这里可以看出，元数据插件的核心揪心boltdb，并且这里肯定需要返回插件的引用，其它插件才能获取到元数据插件的数据
 			mdb := metadata.NewDB(db, cs.(content.Store), snapshotters, dbopts...)
+			// 判断当前boltdb存的数据是否是正确的版本，如果不是，就需要迁移数据
 			if err := mdb.Init(ic.Context); err != nil {
 				return nil, err
 			}

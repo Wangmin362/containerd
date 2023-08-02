@@ -82,6 +82,7 @@ type dbOptions struct {
 // TODO containerd是如何抽象这个DB的？
 type DB struct {
 	db *bolt.DB
+	// TODO 这里的key是什么？
 	ss map[string]*snapshotter
 	cs *contentStore
 
@@ -141,6 +142,7 @@ func NewDB(db *bolt.DB, cs content.Store, ss map[string]snapshots.Snapshotter, o
 
 // Init ensures the database is at the correct version
 // and performs any needed migrations.
+// 判断当前boltdb存的数据是否是正确的版本，如果不是，就需要迁移数据
 func (m *DB) Init(ctx context.Context) error {
 	// errSkip is used when no migration or version needs to be written
 	// to the database and the transaction can be immediately rolled
@@ -225,6 +227,7 @@ func (m *DB) Init(ctx context.Context) error {
 
 // ContentStore returns a namespaced content store
 // proxied to a content store.
+// 用于返回名称空间隔离的内容存储
 func (m *DB) ContentStore() content.Store {
 	if m.cs == nil {
 		return nil
@@ -252,11 +255,13 @@ func (m *DB) Snapshotters() map[string]snapshots.Snapshotter {
 }
 
 // View runs a readonly transaction on the metadata store.
+// 通过只读事务读取元数据
 func (m *DB) View(fn func(*bolt.Tx) error) error {
 	return m.db.View(fn)
 }
 
 // Update runs a writable transaction on the metadata store.
+// 通过写事务写入元数据
 func (m *DB) Update(fn func(*bolt.Tx) error) error {
 	m.wlock.RLock()
 	defer m.wlock.RUnlock()
