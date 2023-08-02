@@ -26,6 +26,7 @@ import (
 )
 
 func init() {
+	// 注册content grpc服务，此服务提供了grpc接口
 	plugin.Register(&plugin.Registration{
 		Type: plugin.GRPCPlugin,
 		ID:   "content",

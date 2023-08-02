@@ -53,6 +53,7 @@ type ReaderAt interface {
 }
 
 // Provider provides a reader interface for specific content
+// TODO 如何理解这个接口？
 type Provider interface {
 	// ReaderAt only requires desc.Digest to be set.
 	// Other fields in the descriptor may be used internally for resolving
@@ -61,6 +62,7 @@ type Provider interface {
 }
 
 // Ingester writes content
+// TODO 如何理解这个接口？
 type Ingester interface {
 	// Writer initiates a writing operation (aka ingestion). A single ingestion
 	// is uniquely identified by its ref, provided using a WithRef option.
@@ -73,6 +75,7 @@ type Ingester interface {
 // IngestManager provides methods for managing ingestions. An ingestion is a
 // not-yet-complete writing operation initiated using Ingester and identified
 // by a ref string.
+// TODO 如何理解这个接口？
 type IngestManager interface {
 	// Status returns the status of the provided ref.
 	Status(ctx context.Context, ref string) (Status, error)
@@ -90,12 +93,14 @@ type IngestManager interface {
 //
 // TODO(stevvooe): Consider a very different name for this struct. Info is way
 // to general. It also reads very weird in certain context, like pluralization.
+// 镜像层的Info信息只需要获取摘要、大小、创建时间以及更新时间，标签。这些数据都是从BoltDB当中直接获取的，没有什么难度，
+// 桶路径为：/v1/<namespace>/content/blob/<digest>
 type Info struct {
-	Digest    digest.Digest
-	Size      int64
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Labels    map[string]string
+	Digest    digest.Digest     // 这个属性相当于镜像层的ID
+	Size      int64             // 桶路径为：/v1/<namespace>/content/blob/<digest>, key为：size
+	CreatedAt time.Time         // 桶路径为：/v1/<namespace>/content/blob/<digest>, key为：createdat
+	UpdatedAt time.Time         // 桶路径为：/v1/<namespace>/content/blob/<digest>, key为：updatedat
+	Labels    map[string]string // 桶路径为：/v1/<namespace>/content/blob/<digest>/labels, 这个桶下的所有数据都是标签
 }
 
 // Status of a content operation (i.e. an ingestion)
@@ -112,10 +117,12 @@ type Status struct {
 type WalkFunc func(Info) error
 
 // Manager provides methods for inspecting, listing and removing content.
+// TODO 如何理解这个接口？
 type Manager interface {
 	// Info will return metadata about content available in the content store.
 	//
 	// If the content is not present, ErrNotFound will be returned.
+	// 获取dgst摘要所对应的镜像层的大小、创建时间、更新时间、标签信息，dgst相当于镜像层的ID
 	Info(ctx context.Context, dgst digest.Digest) (Info, error)
 
 	// Update updates mutable information related to content.

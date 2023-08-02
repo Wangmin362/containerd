@@ -38,6 +38,7 @@ var (
 // ReadLabels reads the labels key from the bucket
 // Uses the key "labels"
 func ReadLabels(bkt *bolt.Bucket) (map[string]string, error) {
+	// 获取/v1/<namespace>/content/blob/<digest>/labels桶中的所有KV键值对最为label
 	return readMap(bkt, bucketKeyLabels)
 }
 
@@ -47,12 +48,14 @@ func ReadAnnotations(bkt *bolt.Bucket) (map[string]string, error) {
 	return readMap(bkt, bucketKeyAnnotations)
 }
 
+// 从/v1/<namespace>/content/blob/<digest>/labels桶中读取labels数据
 func readMap(bkt *bolt.Bucket, bucketName []byte) (map[string]string, error) {
 	lbkt := bkt.Bucket(bucketName)
 	if lbkt == nil {
 		return nil, nil
 	}
 	labels := map[string]string{}
+	// 遍历/v1/<namespace>/content/blob/<digest>/labels桶中读取labels桶中的所有label数据
 	if err := lbkt.ForEach(func(k, v []byte) error {
 		labels[string(k)] = string(v)
 		return nil
@@ -110,6 +113,8 @@ func writeMap(bkt *bolt.Bucket, bucketName []byte, labels map[string]string) err
 
 // ReadTimestamps reads created and updated timestamps from a bucket.
 // Uses keys "createdat" and "updatedat"
+// 从/v1/<namespace>/content/blob/<digest>/createdat桶中获取创建时间
+// 从/v1/<namespace>/content/blob/<digest>/updatedat桶中获取更新时间
 func ReadTimestamps(bkt *bolt.Bucket, created, updated *time.Time) error {
 	for _, f := range []struct {
 		b []byte

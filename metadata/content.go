@@ -67,7 +67,9 @@ func newContentStore(db *DB, shared bool, cs content.Store) *contentStore {
 	}
 }
 
+// Info content.Info接口实现原理很简单，Info所需要的数据都是直接通过读取boltdb完成的
 func (cs *contentStore) Info(ctx context.Context, dgst digest.Digest) (content.Info, error) {
+	// 从当前请求当中获取名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return content.Info{}, err
@@ -75,6 +77,7 @@ func (cs *contentStore) Info(ctx context.Context, dgst digest.Digest) (content.I
 
 	var info content.Info
 	if err := view(ctx, cs.db, func(tx *bolt.Tx) error {
+		// 桶路径为: /v1/<namespace>/content/blob/<digest>
 		bkt := getBlobBucket(tx, ns, dgst)
 		if bkt == nil {
 			return fmt.Errorf("content digest %v: %w", dgst, errdefs.ErrNotFound)
@@ -90,6 +93,7 @@ func (cs *contentStore) Info(ctx context.Context, dgst digest.Digest) (content.I
 }
 
 func (cs *contentStore) Update(ctx context.Context, info content.Info, fieldpaths ...string) (content.Info, error) {
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return content.Info{}, err
@@ -743,17 +747,22 @@ func validateInfo(info *content.Info) error {
 	return nil
 }
 
+// 所谓的读取信息，其实就是直接读取的boltdb的信息
 func readInfo(info *content.Info, bkt *bolt.Bucket) error {
+	// 从/v1/<namespace>/content/blob/<digest>/createdat桶中获取创建时间赋值给info.CreatedAt
+	// 从/v1/<namespace>/content/blob/<digest>/updatedat桶中获取更新时间赋值给info.UpdatedAt
 	if err := boltutil.ReadTimestamps(bkt, &info.CreatedAt, &info.UpdatedAt); err != nil {
 		return err
 	}
 
+	// 获取/v1/<namespace>/content/blob/<digest>/labels桶中的所有KV键值对最为label
 	labels, err := boltutil.ReadLabels(bkt)
 	if err != nil {
 		return err
 	}
 	info.Labels = labels
 
+	// 获取/v1/<namespace>/content/blob/<digest>桶中当前摘要指向的镜像层的大小
 	if v := bkt.Get(bucketKeySize); len(v) > 0 {
 		info.Size, _ = binary.Varint(v)
 	}

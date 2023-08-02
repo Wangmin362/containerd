@@ -67,10 +67,12 @@ func Namespace(ctx context.Context) (string, bool) {
 
 // NamespaceRequired returns the valid namespace from the context or an error.
 func NamespaceRequired(ctx context.Context) (string, error) {
+	// 获取当前请求的namespace参数，如果没有指定，肯定会被默认设置为default
 	namespace, ok := Namespace(ctx)
 	if !ok || namespace == "" {
 		return "", fmt.Errorf("namespace is required: %w", errdefs.ErrFailedPrecondition)
 	}
+	// 校验获取到的名称空间是否有效
 	if err := identifiers.Validate(namespace); err != nil {
 		return "", fmt.Errorf("namespace validation: %w", err)
 	}

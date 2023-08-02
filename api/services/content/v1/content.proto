@@ -326,6 +326,8 @@ message WriteContentResponse {
 	string digest = 6;
 }
 
+// 终止某个镜像的内容服务
 message AbortRequest {
+	// 猜测这里的Ref就是镜像名
 	string ref = 1;
 }

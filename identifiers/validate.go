@@ -58,6 +58,7 @@ func Validate(s string) error {
 		return fmt.Errorf("identifier %q greater than maximum length (%d characters): %w", s, maxLength, errdefs.ErrInvalidArgument)
 	}
 
+	// 当前字符出串必须遵循这个格式
 	if !identifierRe.MatchString(s) {
 		return fmt.Errorf("identifier %q must match %v: %w", s, identifierRe, errdefs.ErrInvalidArgument)
 	}

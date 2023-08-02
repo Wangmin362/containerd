@@ -31,6 +31,7 @@ import (
 // store wraps content.Store with proper event published.
 type store struct {
 	content.Store
+	// 事件生成器
 	publisher events.Publisher
 }
 

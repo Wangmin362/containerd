@@ -418,6 +418,7 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 	}
 	// load additional plugins that don't automatically register themselves
 	// TODO content插件究竟干了啥？
+	// 这个插件和content-service插件有何区别？
 	plugin.Register(&plugin.Registration{
 		Type: plugin.ContentPlugin,
 		ID:   "content",

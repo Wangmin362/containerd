@@ -125,6 +125,7 @@ func (s *store) info(dgst digest.Digest, fi os.FileInfo, labels map[string]strin
 
 // ReaderAt returns an io.ReaderAt for the blob.
 func (s *store) ReaderAt(ctx context.Context, desc ocispec.Descriptor) (content.ReaderAt, error) {
+	// 拼接出当前摘要所指向的镜像层的路径：/var/lib/containerd/
 	p, err := s.blobPath(desc.Digest)
 	if err != nil {
 		return nil, fmt.Errorf("calculating blob path for ReaderAt: %w", err)
@@ -625,10 +626,23 @@ func (s *store) Abort(ctx context.Context, ref string) error {
 }
 
 func (s *store) blobPath(dgst digest.Digest) (string, error) {
+	// 校验当前的摘要是否有效
 	if err := dgst.Validate(); err != nil {
 		return "", fmt.Errorf("cannot calculate blob path from invalid digest: %v: %w", err, errdefs.ErrInvalidArgument)
 	}
 
+	/*
+		root@containerd:/var/lib/containerd/io.containerd.content.v1.content# tree blobs/
+		blobs/
+		└── sha256
+		    ├── 00a1f6deb2b5d3294cb50e0a59dfc47f67650398d2f0151911e49a56bfd9c355
+		    ├── 01085d60b3a624c06a7132ff0749efc6e6565d9f2531d7685ff559fb5d0f669f
+		    ├── 029a81f05585f767fb7549af85a8f24479149e2a73710427a8775593fbe86159
+		    ├── 05a79c7279f71f86a2a0d05eb72fcb56ea36139150f0a75cd87e80a4272e4e39
+	*/
+	// 拼接当前摘要所指向的镜像层的路径，路径为containerd的root配置指向的位置，拼接上blobs/sha256/<digest>
+	// 默认root配置为：/var/lib/containerd，因此路径为：/var/lib/containerd/blobs/sha256/<digest>
+	// TODO 实际的路径应该是：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	return filepath.Join(s.root, "blobs", dgst.Algorithm().String(), dgst.Encoded()), nil
 }
 

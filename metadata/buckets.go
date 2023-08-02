@@ -262,6 +262,7 @@ func getBlobsBucket(tx *bolt.Tx, namespace string) *bolt.Bucket {
 }
 
 func getBlobBucket(tx *bolt.Tx, namespace string, dgst digest.Digest) *bolt.Bucket {
+	// 与其说是桶，倒不如说是名称空间的隔离，或者说是模拟etcd的目录结构：/v1/<namespace>/content/blob/<digest>
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectContent, bucketKeyObjectBlob, []byte(dgst.String()))
 }
 
