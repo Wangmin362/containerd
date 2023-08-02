@@ -36,6 +36,7 @@ import (
 )
 
 type service struct {
+	// 注入内容存储服务
 	store content.Store
 	api.UnimplementedContentServer
 }
@@ -58,6 +59,7 @@ func (s *service) Register(server *grpc.Server) error {
 }
 
 func (s *service) Info(ctx context.Context, req *api.InfoRequest) (*api.InfoResponse, error) {
+	// 解析摘要
 	dg, err := digest.Parse(req.Digest)
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "%q failed validation", req.Digest)

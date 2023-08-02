@@ -79,6 +79,7 @@ type dbOptions struct {
 // image, container, namespace, snapshot, and content data
 // while proxying data shared across namespaces to backend
 // datastores for content and snapshots.
+// TODO containerd是如何抽象这个DB的？
 type DB struct {
 	db *bolt.DB
 	ss map[string]*snapshotter

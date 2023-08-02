@@ -38,7 +38,9 @@ import (
 )
 
 type contentStore struct {
+	// TODO 为什么contentStore又组合了content.Store接口，这玩意本来就是为了实现content.Store接口的嘛
 	content.Store
+	// 这里的DB可以认为就是boltdb
 	db     *DB
 	shared bool
 	l      sync.RWMutex

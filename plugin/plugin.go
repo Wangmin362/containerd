@@ -71,8 +71,11 @@ const (
 	// DiffPlugin implements a differ
 	DiffPlugin Type = "io.containerd.differ.v1"
 	// MetadataPlugin implements a metadata store
+	// 元数据插件虽然没有对外暴露服务，但是元数据插件是其它插件的依赖，而目前所有实现的元数据插件只有一个
+	// 元数据插件是在其它插件初始化的时候被引入的，一般通过ic.Get(plugin.MetadataPlugin)方式获取元数据插件
 	MetadataPlugin Type = "io.containerd.metadata.v1"
 	// ContentPlugin implements a content store
+	// ContentPlugin实现了content.store接口
 	ContentPlugin Type = "io.containerd.content.v1"
 	// GCPlugin implements garbage collection policy
 	GCPlugin Type = "io.containerd.gc.v1"

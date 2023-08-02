@@ -122,7 +122,7 @@ type Manager interface {
 	// Info will return metadata about content available in the content store.
 	//
 	// If the content is not present, ErrNotFound will be returned.
-	// 获取dgst摘要所对应的镜像层的大小、创建时间、更新时间、标签信息，dgst相当于镜像层的ID
+	// 获取摘要所对应的镜像层的大小、创建时间、更新时间、标签信息，dgst相当于镜像层的ID
 	Info(ctx context.Context, dgst digest.Digest) (Info, error)
 
 	// Update updates mutable information related to content.

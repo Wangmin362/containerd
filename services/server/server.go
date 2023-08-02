@@ -423,6 +423,7 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 		Type: plugin.ContentPlugin,
 		ID:   "content",
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
+			// TODO 这里暴露的数据有何作用？
 			ic.Meta.Exports["root"] = ic.Root
 			return local.NewStore(ic.Root)
 		},

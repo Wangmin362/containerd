@@ -79,6 +79,7 @@ func NewStore(root string) (content.Store, error) {
 // require labels and should use `NewStore`. `NewLabeledStore` is primarily
 // useful for tests or standalone implementations.
 func NewLabeledStore(root string, ls LabelStore) (content.Store, error) {
+	// 创建 /var/lib/content/ingest目录？？ 应该创建的是/var/lib/content/io.containerd.content.v1.content/ingest目录吧
 	if err := os.MkdirAll(filepath.Join(root, "ingest"), 0777); err != nil {
 		return nil, err
 	}

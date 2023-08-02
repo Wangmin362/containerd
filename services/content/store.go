@@ -44,10 +44,12 @@ func init() {
 			plugin.MetadataPlugin,
 		},
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
+			// 获取元数据插件，其实元数据插件的实现原理就是依赖boltdb来存储KV键值对
 			m, err := ic.Get(plugin.MetadataPlugin)
 			if err != nil {
 				return nil, err
 			}
+			// 获取事件插件，实际上这里获取的就是事件biz层，有点类似于service注入biz层依赖
 			ep, err := ic.Get(plugin.EventPlugin)
 			if err != nil {
 				return nil, err
@@ -66,6 +68,7 @@ func newContentStore(cs content.Store, publisher events.Publisher) (content.Stor
 	}, nil
 }
 
+// Delete store这里覆盖了content.Store的实现，但是还是借助于content.Store来实现的
 func (s *store) Delete(ctx context.Context, dgst digest.Digest) error {
 	if err := s.Store.Delete(ctx, dgst); err != nil {
 		return err

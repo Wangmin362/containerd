@@ -170,6 +170,7 @@ func init() {
 				dbopts = append(dbopts, metadata.WithPolicyIsolated)
 			}
 
+			// 从这里可以看出，元数据插件的核心揪心boltdb，并且这里肯定需要返回插件的引用，其它插件才能获取到元数据插件的数据
 			mdb := metadata.NewDB(db, cs.(content.Store), snapshotters, dbopts...)
 			if err := mdb.Init(ic.Context); err != nil {
 				return nil, err
