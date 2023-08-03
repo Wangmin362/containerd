@@ -109,6 +109,7 @@ type DB struct {
 
 	// mutationCallbacks are called after each mutation with the flag
 	// set indicating whether any dirty flags are set
+	// TODO 这玩意干吗用的？
 	mutationCallbacks []func(bool)
 
 	// collectible resources
@@ -229,7 +230,8 @@ func (m *DB) Init(ctx context.Context) error {
 
 // ContentStore returns a namespaced content store
 // proxied to a content store.
-// 用于返回名称空间隔离的内容存储
+// 1、用于返回名称空间隔离的内容存储, 这里实际上返回的是local.Store实现
+// 2、local.store实现了对于blob和ingest的增删改查操作，这些操作都是基于文件的操作
 func (m *DB) ContentStore() content.Store {
 	if m.cs == nil {
 		return nil
@@ -371,7 +373,7 @@ func (m *DB) GarbageCollect(ctx context.Context) (gc.Stats, error) {
 		return nil, err
 	}
 
-	events := []namespacedEvent{}
+	var events []namespacedEvent
 	if err := m.db.Update(func(tx *bolt.Tx) error {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()

@@ -71,12 +71,15 @@ type shutdownService struct {
 func (s *shutdownService) Shutdown() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// 如果已经关了，就直接退出
 	if s.isShutdown {
 		return
 	}
+	// TODO 这里不是多此一举嘛
 	s.isShutdown = true
 
 	go func(callbacks []func(context.Context) error) {
+		// 默认为30s
 		ctx, cancel := context.WithTimeout(context.Background(), s.timeout)
 		defer cancel()
 		grp, ctx := errgroup.WithContext(ctx)

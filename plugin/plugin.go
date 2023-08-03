@@ -51,6 +51,12 @@ func (t Type) String() string { return string(t) }
 
 const (
 	// InternalPlugin implements an internal plugin to containerd
+	// opt插件主要作用如下：
+	// 1、创建/opt/containerd/bin目录，然后把此目录追加到PATH环境变量当中
+	// 2、创建/opt/containerd/lib目录，然后把此目录追加到LD_LIBRARY_PATH环境变量当中
+	// shutdown插件主要作用：关闭容器运行时的时候执行所有注册的回调函数
+	// restart插件主要作用：重启容器
+	// tracing插件：似乎适用于追踪的
 	InternalPlugin Type = "io.containerd.internal.v1"
 	// RuntimePlugin implements a runtime
 	RuntimePlugin Type = "io.containerd.runtime.v1"
@@ -80,15 +86,16 @@ const (
 	MetadataPlugin Type = "io.containerd.metadata.v1"
 	// ContentPlugin implements a content store
 	// 1、ContentPlugin实现了content.store接口，实现了对于blob以及ingest的增删改查
-	// 2、本质上ContentPlugin是对于文件的增删改查，没有涉及任何的数据库
+	// 2、本质上ContentPlugin是对于blob以及ingest文件的增删改查，没有涉及任何的数据库
 	ContentPlugin Type = "io.containerd.content.v1"
 	// GCPlugin implements garbage collection policy
 	GCPlugin Type = "io.containerd.gc.v1"
 	// EventPlugin implements event handling
 	EventPlugin Type = "io.containerd.event.v1"
 	// LeasePlugin implements lease manager
+	// manager插件：实现对于Lease资源的增删改查
 	LeasePlugin Type = "io.containerd.lease.v1"
-	// Streaming implements a stream manager
+	// StreamingPlugin implements a stream manager
 	StreamingPlugin Type = "io.containerd.streaming.v1"
 	// TracingProcessorPlugin implements a open telemetry span processor
 	TracingProcessorPlugin Type = "io.containerd.tracing.processor.v1"

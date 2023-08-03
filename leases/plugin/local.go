@@ -25,6 +25,7 @@ import (
 	"github.com/containerd/containerd/plugin"
 )
 
+// manager插件：实现对于Lease资源的增删改查
 func init() {
 	plugin.Register(&plugin.Registration{
 		Type: plugin.LeasePlugin,
@@ -43,6 +44,7 @@ func init() {
 				return nil, err
 			}
 			return &local{
+				// LeaseManager实现对于Lease资源对象的增删改查
 				Manager: metadata.NewLeaseManager(m.(*metadata.DB)),
 				gc:      g.(gcScheduler),
 			}, nil

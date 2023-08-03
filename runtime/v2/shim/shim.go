@@ -373,6 +373,7 @@ func run(ctx context.Context, manager Manager, initFunc Init, name string, confi
 		}
 	}
 
+	// 主要作用：关闭容器运行时的时候执行所有注册的回调函数
 	plugin.Register(&plugin.Registration{
 		Type: plugin.InternalPlugin,
 		ID:   "shutdown",

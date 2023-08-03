@@ -42,6 +42,7 @@ type leaseManager struct {
 
 // NewLeaseManager creates a new lease manager for managing leases using
 // the provided database transaction.
+// LeaseManager实现对于Lease资源对象的增删改查
 func NewLeaseManager(db *DB) leases.Manager {
 	return &leaseManager{
 		db: db,

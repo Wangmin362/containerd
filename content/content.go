@@ -38,7 +38,7 @@ import (
 // Note that until ingestion is complete, its content is not visible through
 // Provider or Manager. Once ingestion is complete, it is no longer exposed
 // through IngestManager.
-// TODO blob和ingest的区别是啥？
+// TODO blob和ingest的区别是啥？ blob指的是已经完整下载的镜像层，而ingest则指的是没有完全下载的镜像层，可以用于做断点续传
 type Store interface {
 	Manager       // Manager实际上就是对于镜像层获取信息、修改信息、遍历镜像层以及删除镜像层的封装，blob的读取接口
 	Provider      // 用于读取镜像层， blob的写入接口
@@ -77,7 +77,8 @@ type Ingester interface {
 // IngestManager provides methods for managing ingestions. An ingestion is a
 // not-yet-complete writing operation initiated using Ingester and identified
 // by a ref string.
-// 这个接口实际上是对于ingest的管理，主要是获取ingest信息以及删除
+// 到底如何理解ingest这个概念？ 根据注释的含义，实际上就是ingest就是一个还未完成的写操作，这里的写操作肯定是指的镜像的写操作
+// IngestManager用于抽象还未完成镜像层的查询、删除操作
 type IngestManager interface {
 	// Status returns the status of the provided ref.
 	Status(ctx context.Context, ref string) (Status, error)

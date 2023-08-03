@@ -50,6 +50,7 @@ type Config struct {
 	Interval duration `toml:"interval"`
 }
 
+// restart插件主要作用：重启容器
 func init() {
 	plugin.Register(&plugin.Registration{
 		Type: plugin.InternalPlugin,
@@ -150,14 +151,16 @@ func (m *monitor) monitor(ctx context.Context) ([]change, error) {
 			status containerd.Status
 			err    error
 		)
-		// 获取容器的标签，标签通过查询boltdb得知
+		// 获取容器的标签
 		labels, err := c.Labels(ctx)
 		if err != nil {
 			return nil, err
 		}
+		// 获取当前容器的状态
 		desiredStatus := containerd.ProcessStatus(labels[restart.StatusLabel])
 		if task, err = c.Task(ctx, nil); err == nil {
 			if status, err = task.Status(ctx); err == nil {
+				// 如果状态相等则不关心
 				if desiredStatus == status.Status {
 					continue
 				}

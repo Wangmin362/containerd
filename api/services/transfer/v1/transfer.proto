@@ -23,6 +23,7 @@ import "google/protobuf/empty.proto";
 
 option go_package = "github.com/containerd/containerd/api/services/transfer/v1;transfer";
 
+// TODO 这个接口抽象的是什么？
 service Transfer {
 	rpc Transfer(TransferRequest) returns (google.protobuf.Empty);
 }

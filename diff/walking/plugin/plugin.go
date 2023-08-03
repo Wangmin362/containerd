@@ -25,6 +25,7 @@ import (
 	"github.com/containerd/containerd/plugin"
 )
 
+// TODO DiffPlugin提供了什么能力？
 func init() {
 	plugin.Register(&plugin.Registration{
 		Type: plugin.DiffPlugin,
@@ -39,6 +40,7 @@ func init() {
 			}
 
 			ic.Meta.Platforms = append(ic.Meta.Platforms, platforms.DefaultSpec())
+			// ContentStore实现了对于blob和ingest的增删改查操作，这些操作都是基于文件的操作
 			cs := md.(*metadata.DB).ContentStore()
 
 			return diffPlugin{

@@ -57,6 +57,7 @@ func init() {
 			return trace.NewBatchSpanProcessor(exp), nil
 		},
 	})
+	// tracing插件：似乎适用于追踪的
 	plugin.Register(&plugin.Registration{
 		ID:       "tracing",
 		Type:     plugin.InternalPlugin,

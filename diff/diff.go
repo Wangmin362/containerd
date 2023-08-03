@@ -54,6 +54,7 @@ type Config struct {
 type Opt func(*Config) error
 
 // Comparer allows creation of filesystem diffs between mounts
+// Compare接口用于比较两个目录之间的不同
 type Comparer interface {
 	// Compare computes the difference between two mounts and returns a
 	// descriptor for the computed diff. The options can provide

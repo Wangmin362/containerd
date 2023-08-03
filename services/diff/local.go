@@ -48,6 +48,7 @@ type differ interface {
 	diff.Applier
 }
 
+// TODO DiffService提供了什么能力？
 func init() {
 	plugin.Register(&plugin.Registration{
 		Type: plugin.ServicePlugin,

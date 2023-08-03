@@ -110,6 +110,7 @@ func init() {
 			StartupDelay:      duration(100 * time.Millisecond),
 		},
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
+			// gc插件需要依赖元数据插件
 			md, err := ic.Get(plugin.MetadataPlugin)
 			if err != nil {
 				return nil, err

@@ -93,6 +93,7 @@ func NewLabeledStore(root string, ls LabelStore) (content.Store, error) {
 }
 
 // Info Content服务实现Info非常简单，就是根据摘要信息拼接出这个摘要对应的镜像层的位置，然后当成一个普通文件读取其大小、创建时间、更新时间等
+// Info接口用于根据摘要镜像层的信息，其实就是查看的二进制文件信息，在containerd中被称为blob
 func (s *store) Info(ctx context.Context, dgst digest.Digest) (content.Info, error) {
 	// blob为binary large object的缩写，也就是二进制形式的大对象
 	// blob的概念可以参考这个连接：https://www.cloudflare.com/zh-cn/learning/cloud/what-is-blob-storage/
@@ -133,6 +134,7 @@ func (s *store) info(dgst digest.Digest, fi os.FileInfo, labels map[string]strin
 }
 
 // ReaderAt returns an io.ReaderAt for the blob.
+// ReaderAt方法用于根据摘要读取镜像层的信息，其实就是读取blob文件（可以理解为镜像层就是一个二进制文件，在containerd中被称为blob）
 func (s *store) ReaderAt(ctx context.Context, desc ocispec.Descriptor) (content.ReaderAt, error) {
 	// 拼接出当前摘要所指向的镜像层的路径：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	p, err := s.blobPath(desc.Digest)
@@ -152,6 +154,7 @@ func (s *store) ReaderAt(ctx context.Context, desc ocispec.Descriptor) (content.
 //
 // While this is safe to do concurrently, safe exist-removal logic must hold
 // some global lock on the store.
+// 根据摘要删除镜像层，镜像层其实就是一个二进制文件，在containerd中被称为blob
 func (s *store) Delete(ctx context.Context, dgst digest.Digest) error {
 	// 找到镜像层的存储路径：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	bp, err := s.blobPath(dgst)
@@ -172,6 +175,7 @@ func (s *store) Delete(ctx context.Context, dgst digest.Digest) error {
 }
 
 // Update 用于更新镜像层的标签信息，TODO 看起来containerd并没有实现镜像层信息更新
+// 根据摘要更新镜像层的信息，镜像层其实就是一个二进制文件，在containerd中被称为blob。
 func (s *store) Update(ctx context.Context, info content.Info, fieldpaths ...string) (content.Info, error) {
 	// 如果没有初始化标签存储器，肯定是不能更改的
 	if s.ls == nil {
@@ -242,6 +246,8 @@ func (s *store) Update(ctx context.Context, info content.Info, fieldpaths ...str
 	return info, nil
 }
 
+// Walk 遍历containerd当前所有的镜像层，镜像层其实就是一个二进制文件，在containerd中被称为blob。
+// 同时，如果制定了过滤器，那就按照指定的过滤器遍历符合条件的镜像层
 func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) error {
 	// 获取blob对象的存储路径：/var/lib/containerd/io.containerd.content.v1.content/blobs
 	root := filepath.Join(s.root, "blobs")
@@ -307,10 +313,12 @@ func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) err
 }
 
 // Status 实际上就是通过镜像的信息
+// 根据镜像名读取ingest信息
 func (s *store) Status(ctx context.Context, ref string) (content.Status, error) {
 	return s.status(s.ingestRoot(ref))
 }
 
+// ListStatuses 遍历containerd所包含的所有镜像的ingest信息
 func (s *store) ListStatuses(ctx context.Context, fs ...string) ([]content.Status, error) {
 	fp, err := os.Open(filepath.Join(s.root, "ingest"))
 	if err != nil {
@@ -470,6 +478,7 @@ func (s *store) total(ingestPath string) int64 {
 // ref at a time.
 //
 // The argument `ref` is used to uniquely identify a long-lived writer transaction.
+// 用于生成ingest文件
 func (s *store) Writer(ctx context.Context, opts ...content.WriterOpt) (content.Writer, error) {
 	var wOpts content.WriterOpts
 	for _, opt := range opts {
