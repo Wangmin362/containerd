@@ -58,9 +58,10 @@ const (
 	RuntimePluginV2 Type = "io.containerd.runtime.v2"
 	// ServicePlugin implements a internal service
 	// TODO 如何理解Service插件？ 服务插件有何特征？ 什么功能的插件应该被实现为服务插件？
+	// 所谓的服务插件，实际上就是提供了资源访问的客户端。譬如容器、镜像、名称空间、快照资源的grpc客户端接口的增删改查
 	ServicePlugin Type = "io.containerd.service.v1"
 	// GRPCPlugin implements a grpc service
-	// 所谓的grpc插件，其实就是那些实现了某些grpc接口的服务
+	// 所谓的grpc插件，其实就是那些实现了某些grpc接口的服务，GRPC插件实现了对于各个资源grpc服务端接口的增删改查
 	GRPCPlugin Type = "io.containerd.grpc.v1"
 	// TTRPCPlugin implements a ttrpc shim service
 	TTRPCPlugin Type = "io.containerd.ttrpc.v1"

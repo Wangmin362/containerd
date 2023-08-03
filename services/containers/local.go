@@ -37,18 +37,21 @@ import (
 )
 
 func init() {
+	// 注册container-service,其实就是实现了container增删改查的grpc接口
 	plugin.Register(&plugin.Registration{
 		Type: plugin.ServicePlugin,
 		ID:   services.ContainersService,
 		Requires: []plugin.Type{
-			plugin.EventPlugin,
-			plugin.MetadataPlugin,
+			plugin.EventPlugin,    // 依赖事件服务
+			plugin.MetadataPlugin, // 依赖元数据服务
 		},
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
+			// 获取元数据插件服务
 			m, err := ic.Get(plugin.MetadataPlugin)
 			if err != nil {
 				return nil, err
 			}
+			// 获取事件服务
 			ep, err := ic.Get(plugin.EventPlugin)
 			if err != nil {
 				return nil, err
@@ -56,7 +59,7 @@ func init() {
 
 			db := m.(*metadata.DB)
 			return &local{
-				Store:     metadata.NewContainerStore(db),
+				Store:     metadata.NewContainerStore(db), // 实现了对于容器的增删改查，元数据保存在boltdb当中
 				db:        db,
 				publisher: ep.(events.Publisher),
 			}, nil
@@ -64,8 +67,11 @@ func init() {
 	})
 }
 
+// 1、实现容器grpc增删改查的客户端代码
+// 2、容器的客户端代码实现的核心就是依赖于元数据服务中的容器服务
 type local struct {
 	containers.Store
+	// TODO 为啥这里需要db，从代码上来看db仅仅适用于开启读事务以及写事务，可是containers.Store服务在实现时已经开启了读事务和写事务
 	db        *metadata.DB
 	publisher events.Publisher
 }
@@ -76,10 +82,12 @@ func (l *local) Get(ctx context.Context, req *api.GetContainerRequest, _ ...grpc
 	var resp api.GetContainerResponse
 
 	return &resp, errdefs.ToGRPC(l.withStoreView(ctx, func(ctx context.Context) error {
+		// 根据容器ID查询容器的元数据，Store实际上就是元数据服务中的容器服务，容器的元数据被存储在boltdb当中
 		container, err := l.Store.Get(ctx, req.ID)
 		if err != nil {
 			return err
 		}
+		// 把结果转换为grpc需要的类型
 		containerpb := containerToProto(&container)
 		resp.Container = containerpb
 
@@ -198,12 +206,14 @@ func (l *local) Delete(ctx context.Context, req *api.DeleteContainerRequest, _ .
 	return &ptypes.Empty{}, nil
 }
 
+// 执行只读事务
 func (l *local) withStore(ctx context.Context, fn func(ctx context.Context) error) func(tx *bolt.Tx) error {
 	return func(tx *bolt.Tx) error {
 		return fn(metadata.WithTransactionContext(ctx, tx))
 	}
 }
 
+// 开启一个只读事务
 func (l *local) withStoreView(ctx context.Context, fn func(ctx context.Context) error) error {
 	return l.db.View(l.withStore(ctx, fn))
 }

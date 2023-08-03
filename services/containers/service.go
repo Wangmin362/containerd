@@ -33,7 +33,7 @@ func init() {
 		Type: plugin.GRPCPlugin,
 		ID:   "containers",
 		Requires: []plugin.Type{
-			plugin.ServicePlugin,
+			plugin.ServicePlugin, // 依赖其它的服务插件
 		},
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
 			plugins, err := ic.GetByType(plugin.ServicePlugin)
@@ -53,6 +53,8 @@ func init() {
 	})
 }
 
+// 1、实现容器grpc增删改查的服务端代码
+// 2、将来用户使用客户端代码的增删改查时，就会调用到这里服务端实现
 type service struct {
 	local api.ContainersClient
 	api.UnimplementedContainersServer

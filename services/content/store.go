@@ -55,6 +55,7 @@ func init() {
 				return nil, err
 			}
 
+			// 元数据的contentStore实际上就是对于blob的增删改查
 			s, err := newContentStore(m.(*metadata.DB).ContentStore(), ep.(events.Publisher))
 			return s, err
 		},

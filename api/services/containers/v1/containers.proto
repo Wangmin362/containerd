@@ -44,6 +44,7 @@ option go_package = "github.com/containerd/containerd/api/services/containers/v1
 service Containers {
 	rpc Get(GetContainerRequest) returns (GetContainerResponse);
 	rpc List(ListContainersRequest) returns (ListContainersResponse);
+	// 这里返回的容器，是通过流的方式返回的
 	rpc ListStream(ListContainersRequest) returns (stream ListContainerMessage);
 	rpc Create(CreateContainerRequest) returns (CreateContainerResponse);
 	rpc Update(UpdateContainerRequest) returns (UpdateContainerResponse);

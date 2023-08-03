@@ -34,6 +34,7 @@ func init() {
 				return nil, err
 			}
 
+			// 这里其实就是借助元数据服务来实现对于沙箱元数据增删改查
 			return metadata.NewSandboxStore(m.(*metadata.DB)), nil
 		},
 	})
