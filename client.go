@@ -74,6 +74,7 @@ import (
 func init() {
 	const prefix = "types.containerd.io"
 	// register TypeUrls for commonly marshaled external types
+	// TODO 这里是在干嘛？
 	major := strconv.Itoa(specs.VersionMajor)
 	typeurl.Register(&specs.Spec{}, prefix, "opencontainers/runtime-spec", major, "Spec")
 	typeurl.Register(&specs.Process{}, prefix, "opencontainers/runtime-spec", major, "Process")
@@ -83,6 +84,7 @@ func init() {
 
 // New returns a new containerd client that is connected to the containerd
 // instance provided by address
+// 返回containerd客户端
 func New(address string, opts ...ClientOpt) (*Client, error) {
 	var copts clientOpts
 	for _, o := range opts {

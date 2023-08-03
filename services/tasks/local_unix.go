@@ -35,6 +35,7 @@ var tasksServiceRequires = []plugin.Type{
 }
 
 func loadV1Runtimes(ic *plugin.InitContext) (map[string]runtime.PlatformRuntime, error) {
+	// 获取运行时插件
 	rt, err := ic.GetByType(plugin.RuntimePlugin)
 	if err != nil {
 		return nil, err
@@ -42,6 +43,7 @@ func loadV1Runtimes(ic *plugin.InitContext) (map[string]runtime.PlatformRuntime,
 
 	runtimes := make(map[string]runtime.PlatformRuntime)
 	for _, rr := range rt {
+		// 实例化运行时插件
 		ri, err := rr.Instance()
 		if err != nil {
 			log.G(ic.Context).WithError(err).Warn("could not load runtime instance due to initialization error")

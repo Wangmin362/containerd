@@ -64,7 +64,9 @@ func init() {
 			},
 		},
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
+			// TODO 这玩意干嘛的
 			ic.Meta.Capabilities = []string{"no", "always", "on-failure", "unless-stopped"}
+			// containerd的客户端
 			client, err := containerd.New("", containerd.WithInMemoryServices(ic))
 			if err != nil {
 				return nil, err
@@ -99,11 +101,13 @@ func (m *monitor) run(interval time.Duration) {
 }
 
 func (m *monitor) reconcile(ctx context.Context) error {
+	// 获取所有名称空间
 	ns, err := m.client.NamespaceService().List(ctx)
 	if err != nil {
 		return err
 	}
 	var wgNSLoop sync.WaitGroup
+	// 依次遍历名称空间
 	for _, name := range ns {
 		name := name
 		wgNSLoop.Add(1)
@@ -134,6 +138,7 @@ func (m *monitor) reconcile(ctx context.Context) error {
 }
 
 func (m *monitor) monitor(ctx context.Context) ([]change, error) {
+	// 查询所有打了containerd.io/restart.status标签的容器
 	containers, err := m.client.Containers(ctx, fmt.Sprintf("labels.%q", restart.StatusLabel))
 	if err != nil {
 		return nil, err
@@ -145,6 +150,7 @@ func (m *monitor) monitor(ctx context.Context) ([]change, error) {
 			status containerd.Status
 			err    error
 		)
+		// 获取容器的标签，标签通过查询boltdb得知
 		labels, err := c.Labels(ctx)
 		if err != nil {
 			return nil, err

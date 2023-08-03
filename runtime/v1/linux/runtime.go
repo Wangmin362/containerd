@@ -77,8 +77,8 @@ func init() {
 			plugin.MetadataPlugin,
 		},
 		Config: &Config{
-			Shim:    defaultShim,
-			Runtime: defaultRuntime,
+			Shim:    defaultShim,    // 默认使用containerd-shim
+			Runtime: defaultRuntime, // 默认使用runc
 		},
 	})
 }
@@ -86,6 +86,7 @@ func init() {
 var _ = (runtime.PlatformRuntime)(&Runtime{})
 
 // Config options for the runtime
+// v1版本运行时配置
 type Config struct {
 	// Shim is a path or name of binary implementing the Shim GRPC API
 	Shim string `toml:"shim"`
@@ -129,6 +130,7 @@ func New(ic *plugin.InitContext) (interface{}, error) {
 		events:     ep.(*exchange.Exchange),
 		config:     cfg,
 	}
+	// 恢复task任务
 	tasks, err := r.restoreTasks(ic.Context)
 	if err != nil {
 		return nil, err
@@ -288,6 +290,7 @@ func (r *Runtime) Tasks(ctx context.Context, all bool) ([]runtime.Task, error) {
 }
 
 func (r *Runtime) restoreTasks(ctx context.Context) ([]*Task, error) {
+	// 读取/run/containerd/io.containerd.runtime.v1.linux目录
 	dir, err := os.ReadDir(r.state)
 	if err != nil {
 		return nil, err
@@ -303,6 +306,7 @@ func (r *Runtime) restoreTasks(ctx context.Context) ([]*Task, error) {
 			continue
 		}
 		log.G(ctx).WithField("namespace", name).Debug("loading tasks in namespace")
+		// 加入任务
 		tasks, err := r.loadTasks(ctx, name)
 		if err != nil {
 			return nil, err
@@ -340,13 +344,14 @@ func (r *Runtime) Delete(ctx context.Context, id string) (*runtime.Exit, error) 
 }
 
 func (r *Runtime) loadTasks(ctx context.Context, ns string) ([]*Task, error) {
+	// 读取/run/containerd/io.containerd.runtime.v1.linux/<namespace>目录
 	dir, err := os.ReadDir(filepath.Join(r.state, ns))
 	if err != nil {
 		return nil, err
 	}
 	var o []*Task
 	for _, path := range dir {
-		if !path.IsDir() {
+		if !path.IsDir() { // 忽略目录
 			continue
 		}
 		id := path.Name()
@@ -365,6 +370,7 @@ func (r *Runtime) loadTasks(ctx context.Context, ns string) ([]*Task, error) {
 			"namespace": ns,
 		}))
 
+		// 读取pid
 		pid, _ := runc.ReadPidFile(filepath.Join(bundle.path, process.InitPidFile))
 		shimExit := make(chan struct{})
 		s, err := bundle.NewShimClient(ctx, ns, ShimConnect(r.config, func() {

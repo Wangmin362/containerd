@@ -62,6 +62,7 @@ type Exit struct {
 
 // PlatformRuntime is responsible for the creation and management of
 // tasks and processes for a platform.
+// 任务增删改查接口
 type PlatformRuntime interface {
 	// ID of the runtime
 	ID() string

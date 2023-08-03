@@ -40,6 +40,7 @@ type InitContext struct {
 	// deprecated: will be removed in 2.0, use plugin.EventType
 	Events *exchange.Exchange
 
+	// TODO 如何理解这里Meta的设计
 	Meta *Meta // plugins can fill in metadata at init.
 
 	// 包含containerd当前所有注册的插件

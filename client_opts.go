@@ -29,8 +29,11 @@ import (
 )
 
 type clientOpts struct {
-	defaultns       string
-	defaultRuntime  string
+	// 默认的名称空间
+	defaultns string
+	// 默认的容器运行时
+	defaultRuntime string
+	// 默认的
 	defaultPlatform platforms.MatchComparer
 	services        *services
 	dialOptions     []grpc.DialOption

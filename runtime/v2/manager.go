@@ -50,6 +50,7 @@ type Config struct {
 	SchedCore bool `toml:"sched_core"`
 }
 
+// 现在基本都是使用的v2版本的runtime
 func init() {
 	plugin.Register(&plugin.Registration{
 		Type: plugin.RuntimePluginV2,
