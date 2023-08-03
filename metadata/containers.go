@@ -36,7 +36,7 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
-// 解决boltdb，实现对于容器元数据的增删改查
+// 借助boltdb，实现对于容器元数据的增删改查
 type containerStore struct {
 	db *DB
 }

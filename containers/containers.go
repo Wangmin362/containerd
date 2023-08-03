@@ -97,7 +97,7 @@ type RuntimeInfo struct {
 }
 
 // Store interacts with the underlying container storage
-// 抽象容器的增删改查
+// 抽象容器的增删改查接口  ContainerService将会实现这个接口
 type Store interface {
 	// Get a container using the id.
 	//

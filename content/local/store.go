@@ -70,6 +70,7 @@ type store struct {
 
 // NewStore returns a local content store
 // TODO 似乎containerd目前并不支持给镜像层存储标签，都是使用的这个函数去初始化的
+// content.local.store实现了对于blob和ingest的增删改查操作，这些操作都是基于文件的操作
 func NewStore(root string) (content.Store, error) {
 	return NewLabeledStore(root, nil)
 }

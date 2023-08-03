@@ -1,0 +1,1 @@
+content.local.store实现了对于blob和ingest的增删改查操作，这些操作都是基于文件的操作
