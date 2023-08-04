@@ -40,13 +40,16 @@ var Command = cli.Command{
 	Usage:   "Manage containers",
 	Aliases: []string{"c", "container"},
 	Subcommands: []cli.Command{
-		createCommand,
-		deleteCommand,
-		infoCommand,
-		listCommand,
-		setLabelsCommand,
+		createCommand,    // 创建容器
+		deleteCommand,    // 删除容器
+		infoCommand,      // 查看容器信息
+		listCommand,      // 列出所有容器
+		setLabelsCommand, // 为容器设置标签
+		// TODO 下面两个命令才是核心
+		// 为容器创建checkpoint，所谓的checkpoint，其实就是容器快照，也就是在执行此命令的那一刻把容器状态做成一个快照保存起来，
+		// 从而我们可以在其它机器上恢复这个容器
 		checkpointCommand,
-		restoreCommand,
+		restoreCommand, // 把容器从快照（checkpoint）恢复出来
 	},
 }
 
