@@ -36,10 +36,10 @@ var Command = cli.Command{
 	Aliases: []string{"namespace", "ns"},
 	Usage:   "Manage namespaces",
 	Subcommands: cli.Commands{
-		createCommand,
-		listCommand,
-		removeCommand,
-		setLabelsCommand,
+		createCommand,    // 创建名称空间
+		listCommand,      // 列出所有的名称空间
+		removeCommand,    // 移除某个名称空间
+		setLabelsCommand, // 为某个名称空间设置标签，或者清除某个名称空间的所有标签
 	},
 }
 
@@ -50,7 +50,9 @@ var createCommand = cli.Command{
 	ArgsUsage:   "<name> [<key>=<value>]",
 	Description: "create a new namespace. it must be unique",
 	Action: func(context *cli.Context) error {
+		// 获取当前请求的名称空间以及标签
 		namespace, labels := commands.ObjectWithLabelArgs(context)
+		// 名称空间必须要指定
 		if namespace == "" {
 			return errors.New("please specify a namespace")
 		}
@@ -59,11 +61,14 @@ var createCommand = cli.Command{
 			return err
 		}
 		defer cancel()
+		// 获取名称空间客户端
 		namespaces := client.NamespaceService()
+		// 创建名称空间
 		return namespaces.Create(ctx, namespace, labels)
 	},
 }
 
+// TODO 清除名称空间的标签似乎有问题呀？ 如果没有任何标签，这里应该不会做任何操作才对
 var setLabelsCommand = cli.Command{
 	Name:        "label",
 	Usage:       "Set and clear labels for a namespace",
@@ -163,6 +168,7 @@ var removeCommand = cli.Command{
 
 		opts := deleteOpts(context)
 		namespaces := client.NamespaceService()
+		// 移除名称空间，一次性可以移除多个
 		for _, target := range context.Args() {
 			if err := namespaces.Delete(ctx, target, opts...); err != nil {
 				if !errdefs.IsNotFound(err) {

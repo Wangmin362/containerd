@@ -23,6 +23,7 @@ import (
 )
 
 // Command to install binary packages
+// TODO 这里安装的二进制包是啥？
 var Command = cli.Command{
 	Name:        "install",
 	Usage:       "Install a new package",

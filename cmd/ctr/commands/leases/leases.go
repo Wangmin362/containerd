@@ -34,9 +34,9 @@ var Command = cli.Command{
 	Name:  "leases",
 	Usage: "Manage leases",
 	Subcommands: cli.Commands{
-		listCommand,
-		createCommand,
-		deleteCommand,
+		listCommand,   // 列出所有的lease对象
+		createCommand, // 创建lease对象
+		deleteCommand, // 删除lease对象
 	},
 }
 
