@@ -1,0 +1,65 @@
+@startuml
+set namespaceSeparator ::
+
+package content {
+    interface Manager {
+        Info(ctx,digest.Digest) (Info, error)
+        Update(ctx,Info, fieldpaths) (Info, error)
+        Walk(ctx,WalkFunc, filters) error
+        Delete(ctx,digest.Digest) error
+    }
+    note top: 用于blob的查询、更新、遍历、删除
+
+    interface Provider {
+        ReaderAt(ctx,ocispec.Descriptor) (ReaderAt, error)
+    }
+    note top: 用于blob的写入
+
+    interface IngestManager {
+        Status(ctx,ref) (Status, error)
+        ListStatuses(ctx,filters) ([]Status, error)
+        Abort(ctx, ref) error
+    }
+    note top: 用于ingest的查询、终止
+
+    interface Ingester {
+        Writer(ctx, WriterOpt) (Writer, error)
+    }
+    note top: 用于ingest的写入
+
+    interface Store {
+        Manager
+        Provider
+        IngestManager
+        Ingester
+    }
+    Manager *-[#blue]- Store
+    Provider *-[#blue]- Store
+    IngestManager *-[#blue]- Store
+    Ingester *-[#blue]- Store
+
+    class local.store {
+    }
+    note left: Type: ContentPlugin\nID: content
+    Store <-[#blue]- local.store
+}
+
+package metadata {
+    class DB {
+        contentstore
+        snapshotter
+    }
+    local.store <-[#blue]- DB
+    note left: Type: MetadataPlugin\nID: bolt
+}
+
+package service {
+    class content.store {
+        content.Store
+        events.Publisher
+    }
+    DB <-[#blue]- content.store
+    note left: Type: ServicePlugin\nID: ContentService
+}
+
+@enduml
