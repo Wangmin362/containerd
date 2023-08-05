@@ -74,6 +74,7 @@ type Container interface {
 	// SetLabels sets the provided labels for the container and returns the final label set
 	SetLabels(context.Context, map[string]string) (map[string]string, error)
 	// Extensions returns the extensions set on the container
+	// 获取容器的扩展元数据
 	Extensions(context.Context) (map[string]typeurl.Any, error)
 	// Update a container
 	Update(context.Context, ...UpdateContainerOpts) error
@@ -92,8 +93,11 @@ func containerFromRecord(client *Client, c containers.Container) *container {
 var _ = (Container)(&container{})
 
 type container struct {
-	client   *Client
-	id       string
+	client *Client
+	// 容器ID，所谓的ID，实际上就是创建容器时指定的名字，如果没有指定，containerd会以<images>-<random-string>的方式生成一个名字
+	id string
+	// 容器数据，这里直接被命名为元数据，因为容器在containerd中并不是一个真正运行的容器，可以理解为磁盘上的一个YAML数据，仅仅是
+	// 这么一个数据，并没有真正的运行。containerd中真正运行的容器指的是task这个概念
 	metadata containers.Container
 }
 
@@ -110,6 +114,7 @@ func (c *container) Info(ctx context.Context, opts ...InfoOpts) (containers.Cont
 	for _, o := range opts {
 		o(i)
 	}
+	// 如果不需要刷新的话，直接返回容器数据
 	if i.Refresh {
 		metadata, err := c.get(ctx)
 		if err != nil {
@@ -172,6 +177,7 @@ func (c *container) Spec(ctx context.Context) (*oci.Spec, error) {
 // Delete deletes an existing container
 // an error is returned if the container has running tasks
 func (c *container) Delete(ctx context.Context, opts ...DeleteOpts) error {
+	// 如果有任务，容器无法删除
 	if _, err := c.loadTask(ctx, nil); err == nil {
 		return fmt.Errorf("cannot delete running task %v: %w", c.id, errdefs.ErrFailedPrecondition)
 	}

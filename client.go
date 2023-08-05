@@ -212,14 +212,16 @@ func NewWithConn(conn *grpc.ClientConn, opts ...ClientOpt) (*Client, error) {
 }
 
 // Client is the client to interact with containerd and its various services
-// using a uniform interface containerd客户端工具
+// using a uniform interface
+// containerd客户端工具，内置了content, image, container, namespace, snapshotter, task, diff, event, lease, sandbox各种服务插件
 type Client struct {
 	services
 	connMu    sync.Mutex
 	conn      *grpc.ClientConn
 	runtime   string
-	defaultns string
+	defaultns string // 默认的名称空间
 	platform  platforms.MatchComparer
+	// 这里的connector指的是和containerd的链接
 	connector func() (*grpc.ClientConn, error)
 }
 

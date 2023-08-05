@@ -71,6 +71,7 @@ var checkpointCommand = cli.Command{
 		if context.Bool("task") {
 			opts = append(opts, containerd.WithCheckpointTask)
 		}
+		// 根据容器的ID获取容器数据
 		container, err := client.LoadContainer(ctx, id)
 		if err != nil {
 			return err

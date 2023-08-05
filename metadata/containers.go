@@ -48,6 +48,7 @@ func NewContainerStore(db *DB) containers.Store {
 	}
 }
 
+// Get 根据容器Id获取当前容器的数据
 func (s *containerStore) Get(ctx context.Context, id string) (containers.Container, error) {
 	// 获取当前请求的名称空间
 	namespace, err := namespaces.NamespaceRequired(ctx)
