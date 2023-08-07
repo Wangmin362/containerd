@@ -35,11 +35,13 @@ var usageCommand = cli.Command{
 	ArgsUsage: "[flags] <ref>",
 	Flags:     commands.SnapshotterFlags,
 	Action: func(context *cli.Context) error {
+		// 这里的ref其实就是镜像名
 		var ref = context.Args().First()
 		if ref == "" {
 			return fmt.Errorf("please provide an image reference to mount")
 		}
 
+		// containerd的客户端
 		client, ctx, cancel, err := commands.NewClient(context)
 		if err != nil {
 			return err

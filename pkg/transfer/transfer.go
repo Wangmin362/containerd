@@ -26,6 +26,8 @@ import (
 	"github.com/containerd/containerd/images"
 )
 
+// Transferrer TODO 这个接口的定义是真的牛逼，参数全是Any
+// 1、从名字上来看，这是一个传输接口，其参数定义也是很直接的体现；既然是传输，那么必定是从源传输到目的。而这里使用了any类型来定义传输服务
 type Transferrer interface {
 	Transfer(ctx context.Context, source interface{}, destination interface{}, opts ...Opt) error
 }

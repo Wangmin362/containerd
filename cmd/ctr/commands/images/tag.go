@@ -26,6 +26,8 @@ import (
 	"github.com/containerd/containerd/pkg/transfer/image"
 )
 
+// 对于ctr image tag命令，也就是我们平时所谓的打tag，其实现的原理其实就是使用原始的镜像数据，加上新的tag，这个tag作为新镜像的名字，创建一个
+// 新的镜像。实际上镜像在containerd仅仅是是一些元数据，并没有镜像层这些信息，镜像层数据是通过content-service保存的。
 var tagCommand = cli.Command{
 	Name:        "tag",
 	Usage:       "Tag an image",
@@ -43,6 +45,7 @@ var tagCommand = cli.Command{
 	},
 	Action: func(context *cli.Context) error {
 		var (
+			// 源镜像名
 			ref = context.Args().First()
 		)
 		if ref == "" {
@@ -58,6 +61,7 @@ var tagCommand = cli.Command{
 		}
 		defer cancel()
 
+		// TODO 如何理解这里的逻辑？
 		if !context.BoolT("local") {
 			for _, targetRef := range context.Args()[1:] {
 				err = client.Transfer(ctx, image.NewStore(ref), image.NewStore(targetRef))
@@ -69,6 +73,7 @@ var tagCommand = cli.Command{
 			return nil
 		}
 
+		// TODO 为什么需要一个Lease资源？
 		ctx, done, err := client.WithLease(ctx)
 		if err != nil {
 			return err
@@ -76,17 +81,22 @@ var tagCommand = cli.Command{
 		defer done(ctx)
 
 		imageService := client.ImageService()
+		// 获取档期啊需要打Tag的镜像
 		image, err := imageService.Get(ctx, ref)
 		if err != nil {
 			return err
 		}
 		// Support multiple references for one command run
+		// context.Args()[1:]为需要打的目标tag
 		for _, targetRef := range context.Args()[1:] {
 			image.Name = targetRef
 			// Attempt to create the image first
+			// 尝试创建镜像，containerd的镜像其实就是元数据，镜像层的信息并不在镜像当中
+			// 从这里可以看出，打tag其实就是新建一个镜像，新建立的镜像和原始镜像没有啥关系，和Linux的软连接还不一样
 			if _, err = imageService.Create(ctx, image); err != nil {
 				// If user has specified force and the image already exists then
 				// delete the original image and attempt to create the new one
+				// 如果当前目标tag已经存在，并且制定了强制覆盖参数，那么先删除原始镜像，然后创建新的镜像
 				if errdefs.IsAlreadyExists(err) && context.Bool("force") {
 					if err = imageService.Delete(ctx, targetRef); err != nil {
 						return err
