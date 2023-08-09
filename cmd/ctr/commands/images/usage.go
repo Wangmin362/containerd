@@ -48,11 +48,13 @@ var usageCommand = cli.Command{
 		}
 		defer cancel()
 
+		// 如何理解snapshotter?
 		snapshotter := context.String("snapshotter")
 		if snapshotter == "" {
 			snapshotter = containerd.DefaultSnapshotter
 		}
 
+		// 通过镜像名获取当前镜像
 		img, err := client.ImageService().Get(ctx, ref)
 		if err != nil {
 			return fmt.Errorf("failed to ensure if image %s exists: %w", ref, err)

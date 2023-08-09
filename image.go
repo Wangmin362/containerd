@@ -58,6 +58,7 @@ type Image interface {
 	// Config descriptor for the image.
 	Config(ctx context.Context) (ocispec.Descriptor, error)
 	// IsUnpacked returns whether or not an image is unpacked.
+	// TODO 这个接口有啥用？
 	IsUnpacked(context.Context, string) (bool, error)
 	// ContentStore provides a content store which contains image blob data
 	ContentStore() content.Store
