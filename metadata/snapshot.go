@@ -43,6 +43,7 @@ const (
 
 // 用于快照的增删改查
 type snapshotter struct {
+	// 元数据快照服务需要依赖快照插件
 	snapshots.Snapshotter
 	name string
 	db   *DB
@@ -63,15 +64,19 @@ func createKey(id uint64, namespace, key string) string {
 	return fmt.Sprintf("%s/%d/%s", namespace, id, key)
 }
 
+// 根据快照的key获取快照的名字，其中name参数指的是快照类型，譬如overlay, devmapper, btrfs, lcow等等
 func getKey(tx *bolt.Tx, ns, name, key string) string {
+	// 获取/v1/<namespace>/snapshots/<snapshotter-type>桶
 	bkt := getSnapshotterBucket(tx, ns, name)
 	if bkt == nil {
 		return ""
 	}
+	// 获取/v1/<namespace>/snapshots/<snapshotter-type>/<name>桶
 	bkt = bkt.Bucket([]byte(key))
 	if bkt == nil {
 		return ""
 	}
+	// 获取当前快照的名字
 	v := bkt.Get(bucketKeyName)
 	if len(v) == 0 {
 		return ""
@@ -79,14 +84,18 @@ func getKey(tx *bolt.Tx, ns, name, key string) string {
 	return string(v)
 }
 
+// 根据快照的key获取当前快照的名字
 func (s *snapshotter) resolveKey(ctx context.Context, key string) (string, error) {
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return "", err
 	}
 
 	var id string
+	// 开启读事务
 	if err := view(ctx, s.db, func(tx *bolt.Tx) error {
+		// 根据快照的key获取当前快照的名字
 		id = getKey(tx, ns, s.name, key)
 		if id == "" {
 			return fmt.Errorf("snapshot %v does not exist: %w", key, errdefs.ErrNotFound)
@@ -100,6 +109,7 @@ func (s *snapshotter) resolveKey(ctx context.Context, key string) (string, error
 }
 
 func (s *snapshotter) Stat(ctx context.Context, key string) (snapshots.Info, error) {
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return snapshots.Info{}, err
@@ -111,23 +121,30 @@ func (s *snapshotter) Stat(ctx context.Context, key string) (snapshots.Info, err
 			Name: key,
 		}
 	)
+	// 开启读事务
 	if err := view(ctx, s.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/snapshots/<snapshotter-type>桶，这里的snapshotter-type可以是overlay, zfs, devmapper等等
 		bkt := getSnapshotterBucket(tx, ns, s.name)
 		if bkt == nil {
 			return fmt.Errorf("snapshot %v does not exist: %w", key, errdefs.ErrNotFound)
 		}
+		// 获取/v1/<namespace>/snapshots/<snapshotter-type>/<key>桶
 		sbkt := bkt.Bucket([]byte(key))
 		if sbkt == nil {
 			return fmt.Errorf("snapshot %v does not exist: %w", key, errdefs.ErrNotFound)
 		}
+		// 从/v1/<namespace>/snapshots/<snapshotter-type>/<key>桶中读取标签
 		local.Labels, err = boltutil.ReadLabels(sbkt)
 		if err != nil {
 			return fmt.Errorf("failed to read labels: %w", err)
 		}
+		// 从/v1/<namespace>/snapshots/<snapshotter-type>/<key>桶中读取床架时间以及更更新时间
 		if err := boltutil.ReadTimestamps(sbkt, &local.Created, &local.Updated); err != nil {
 			return fmt.Errorf("failed to read timestamps: %w", err)
 		}
+		// 从/v1/<namespace>/snapshots/<snapshotter-type>/<key>桶中读取name
 		bkey = string(sbkt.Get(bucketKeyName))
+		// 从/v1/<namespace>/snapshots/<snapshotter-type>/<key>桶中读取parent
 		local.Parent = string(sbkt.Get(bucketKeyParent))
 
 		return nil
@@ -135,11 +152,13 @@ func (s *snapshotter) Stat(ctx context.Context, key string) (snapshots.Info, err
 		return snapshots.Info{}, err
 	}
 
+	// 从快照插件中获取快照信息
 	info, err := s.Snapshotter.Stat(ctx, bkey)
 	if err != nil {
 		return snapshots.Info{}, err
 	}
 
+	// 利用metadata中的数据覆盖从快照插件读取出来的信息
 	return overlayInfo(info, local), nil
 }
 
@@ -147,6 +166,7 @@ func (s *snapshotter) Update(ctx context.Context, info snapshots.Info, fieldpath
 	s.l.RLock()
 	defer s.l.RUnlock()
 
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return snapshots.Info{}, err
@@ -163,20 +183,25 @@ func (s *snapshotter) Update(ctx context.Context, info snapshots.Info, fieldpath
 		}
 		updated bool
 	)
+	// 开启写事务
 	if err := update(ctx, s.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/snapshots/<snapshotter-type>桶
 		bkt := getSnapshotterBucket(tx, ns, s.name)
 		if bkt == nil {
 			return fmt.Errorf("snapshot %v does not exist: %w", info.Name, errdefs.ErrNotFound)
 		}
+		// 获取/v1/<namespace>/snapshots/<snapshotter-type>/<name>桶
 		sbkt := bkt.Bucket([]byte(info.Name))
 		if sbkt == nil {
 			return fmt.Errorf("snapshot %v does not exist: %w", info.Name, errdefs.ErrNotFound)
 		}
 
+		// 读取/v1/<namespace>/snapshots/<snapshotter-type>/<name>桶中的标签
 		local.Labels, err = boltutil.ReadLabels(sbkt)
 		if err != nil {
 			return fmt.Errorf("failed to read labels: %w", err)
 		}
+		// 获取/v1/<namespace>/snapshots/<snapshotter-type>/<name>桶中的创建时间以及更新时间
 		if err := boltutil.ReadTimestamps(sbkt, &local.Created, &local.Updated); err != nil {
 			return fmt.Errorf("failed to read timestamps: %w", err)
 		}
@@ -204,14 +229,17 @@ func (s *snapshotter) Update(ctx context.Context, info snapshots.Info, fieldpath
 		} else {
 			local.Labels = info.Labels
 		}
+		// 校验快照的各个属性是否合法
 		if err := validateSnapshot(&local); err != nil {
 			return err
 		}
 		local.Updated = time.Now().UTC()
 
+		// 更新当前快照的更新时间
 		if err := boltutil.WriteTimestamps(sbkt, local.Created, local.Updated); err != nil {
 			return fmt.Errorf("failed to read timestamps: %w", err)
 		}
+		// 更新当前快照标签
 		if err := boltutil.WriteLabels(sbkt, local.Labels); err != nil {
 			return fmt.Errorf("failed to read labels: %w", err)
 		}
@@ -226,6 +254,7 @@ func (s *snapshotter) Update(ctx context.Context, info snapshots.Info, fieldpath
 		// NOTE: Perform this inside the transaction to reduce the
 		// chances of out of sync data. The backend snapshotters
 		// should perform the Update as fast as possible.
+		// 更新快照信息，只需要更新标签  TODO 为啥这里只需要更新标签信息
 		if info, err = s.Snapshotter.Update(ctx, inner, fieldpaths...); err != nil {
 			return err
 		}
@@ -259,14 +288,17 @@ func overlayInfo(info, overlay snapshots.Info) snapshots.Info {
 }
 
 func (s *snapshotter) Usage(ctx context.Context, key string) (snapshots.Usage, error) {
+	// 根据快照的key获取当前快照的名字
 	bkey, err := s.resolveKey(ctx, key)
 	if err != nil {
 		return snapshots.Usage{}, err
 	}
+	// 直接调用快照插件获取使用信息
 	return s.Snapshotter.Usage(ctx, bkey)
 }
 
 func (s *snapshotter) Mounts(ctx context.Context, key string) ([]mount.Mount, error) {
+	// 根据快照的key获取当前快照的名字
 	bkey, err := s.resolveKey(ctx, key)
 	if err != nil {
 		return nil, err
@@ -280,6 +312,7 @@ func (s *snapshotter) Prepare(ctx context.Context, key, parent string, opts ...s
 		return nil, err
 	}
 
+	// TODO 这里是在干嘛？
 	if s.db.dbopts.publisher != nil {
 		if err := s.db.dbopts.publisher.Publish(ctx, "/snapshot/prepare", &eventstypes.SnapshotPrepare{
 			Key:         key,
@@ -301,6 +334,7 @@ func (s *snapshotter) createSnapshot(ctx context.Context, key, parent string, re
 	s.l.RLock()
 	defer s.l.RUnlock()
 
+	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
 	if err != nil {
 		return nil, err
@@ -313,6 +347,7 @@ func (s *snapshotter) createSnapshot(ctx context.Context, key, parent string, re
 		}
 	}
 
+	// 校验快照信息，目前只校验了标签信息
 	if err := validateSnapshot(&base); err != nil {
 		return nil, err
 	}
@@ -326,7 +361,9 @@ func (s *snapshotter) createSnapshot(ctx context.Context, key, parent string, re
 		}
 	)
 
+	// 开启写事务
 	if err := update(ctx, s.db, func(tx *bolt.Tx) error {
+		// 创建/v1/<namespace>/snapshots/<snapshots-type>桶
 		bkt, err := createSnapshotterBucket(tx, ns, s.name)
 		if err != nil {
 			return err
@@ -334,23 +371,28 @@ func (s *snapshotter) createSnapshot(ctx context.Context, key, parent string, re
 
 		// Check if target exists, if so, return already exists
 		if target != "" {
+			// 获取/v1/<namespace>/snapshots/<snapshots-type>/<target>桶
 			if tbkt := bkt.Bucket([]byte(target)); tbkt != nil {
 				return fmt.Errorf("target snapshot %q: %w", target, errdefs.ErrAlreadyExists)
 			}
 		}
 
+		// 创建/v1/<namespace>/snapshots/<snapshots-type>/<key>桶
 		if bbkt := bkt.Bucket([]byte(key)); bbkt != nil {
 			return fmt.Errorf("snapshot %q: %w", key, errdefs.ErrAlreadyExists)
 		}
 
 		if parent != "" {
+			// 获取/v1/<namespace>/snapshots/<snapshots-type>/<parent>桶
 			pbkt := bkt.Bucket([]byte(parent))
 			if pbkt == nil {
 				return fmt.Errorf("parent snapshot %v does not exist: %w", parent, errdefs.ErrNotFound)
 			}
+			// 获取当前快照parent的名字
 			bparent = string(pbkt.Get(bucketKeyName))
 		}
 
+		// TODO 如何理解这个方法
 		sid, err := bkt.NextSequence()
 		if err != nil {
 			return err

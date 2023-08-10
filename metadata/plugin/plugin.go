@@ -110,6 +110,7 @@ func init() {
 
 			snapshotters := make(map[string]snapshots.Snapshotter)
 			for name, sn := range snapshottersRaw {
+				// 实例化快照插件
 				sn, err := sn.Instance()
 				if err != nil {
 					if !plugin.IsSkipPlugin(err) {

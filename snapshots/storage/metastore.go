@@ -63,11 +63,14 @@ type Snapshot struct {
 // parentage. Using the MetaStore is not required to implement a snapshot
 // driver but can be used to handle the persistence and transactional
 // complexities of a driver implementation.
+// 1、元数据存储用于存储快照驱动相关的元数据
 type MetaStore struct {
+	// boltdb存储数据的位置
 	dbfile string
 
 	dbL sync.Mutex
-	db  *bolt.DB
+	// 核心实现其实就是boLtdb
+	db *bolt.DB
 }
 
 // NewMetaStore returns a snapshot MetaStore for storage of metadata related to
@@ -96,6 +99,7 @@ func (ms *MetaStore) TransactionContext(ctx context.Context, writable bool) (con
 	}
 	ms.dbL.Unlock()
 
+	// 开启事务
 	tx, err := ms.db.Begin(writable)
 	if err != nil {
 		return ctx, nil, fmt.Errorf("failed to start transaction: %w", err)
@@ -125,12 +129,14 @@ func (ms *MetaStore) WithTransaction(ctx context.Context, writable bool, fn Tran
 
 	// Always rollback if transaction is not writable
 	if err != nil || !writable {
+		// 函数执行有问题，就回滚
 		if terr := trans.Rollback(); terr != nil {
 			log.G(ctx).WithError(terr).Error("failed to rollback transaction")
 
 			result = multierror.Append(result, fmt.Errorf("rollback failed: %w", terr))
 		}
 	} else {
+		// 执行成功就提交
 		if terr := trans.Commit(); terr != nil {
 			log.G(ctx).WithError(terr).Error("failed to commit transaction")
 

@@ -68,6 +68,7 @@ func WithUpperdirLabel(config *SnapshotterConfig) error {
 }
 
 type snapshotter struct {
+	// 这里的root应该就是值得overlay-snapshotter插件保存数据的位置，默认为：/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs
 	root          string
 	ms            *storage.MetaStore
 	asyncRemove   bool
