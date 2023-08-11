@@ -351,6 +351,8 @@ func (o *snapshotter) Walk(ctx context.Context, fn snapshots.WalkFunc, fs ...str
 }
 
 // Cleanup cleans up disk resources from removed or abandoned snapshots
+// 目的：清理无用的镜像，这些镜像实际上已经被删除
+// 原理：元数据保存在boltdb当中，对比元数据和目录，如果元数据中不存在，但是存在这个目录，那么这个目录下的快照就需要被删除。
 func (o *snapshotter) Cleanup(ctx context.Context) error {
 	cleanup, err := o.cleanupDirectories(ctx)
 	if err != nil {
@@ -366,6 +368,8 @@ func (o *snapshotter) Cleanup(ctx context.Context) error {
 	return nil
 }
 
+// 目的：为了获取需要删除的镜像
+// 原理：元数据保存在boltdb当中，对比元数据和目录，如果元数据中不存在，但是存在这个目录，那么这个目录下的快照就需要被删除。
 func (o *snapshotter) cleanupDirectories(ctx context.Context) (_ []string, err error) {
 	var cleanupDirs []string
 	// Get a write transaction to ensure no other write transaction can be entered

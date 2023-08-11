@@ -48,6 +48,7 @@ type Image interface {
 	// Labels of the image
 	Labels() map[string]string
 	// Unpack unpacks the image's content into a snapshot
+	// 所谓的unpack，实际上就是把就像数据解压为快照
 	Unpack(context.Context, string, ...UnpackOpt) error
 	// RootFS returns the unpacked diffids that make up images rootfs.
 	RootFS(ctx context.Context) ([]digest.Digest, error)

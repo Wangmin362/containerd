@@ -168,7 +168,7 @@ func NewResolver(options ResolverOptions) remotes.Resolver {
 	}
 
 	if options.Hosts == nil {
-		opts := []RegistryOpt{}
+		var opts []RegistryOpt
 		if options.Host != nil {
 			opts = append(opts, WithHostTranslator(options.Host))
 		}
@@ -227,7 +227,11 @@ func (r *countingReader) Read(p []byte) (int, error) {
 
 var _ remotes.Resolver = &dockerResolver{}
 
+// Resolve
+// 1、ref为镜像名
+// 2、
 func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocispec.Descriptor, error) {
+	// 解析镜像名
 	base, err := r.resolveDockerBase(ref)
 	if err != nil {
 		return "", ocispec.Descriptor{}, err
@@ -433,6 +437,7 @@ func (r *dockerResolver) Pusher(ctx context.Context, ref string) (remotes.Pusher
 }
 
 func (r *dockerResolver) resolveDockerBase(ref string) (*dockerBase, error) {
+	// 解析镜像名
 	refspec, err := reference.Parse(ref)
 	if err != nil {
 		return nil, err

@@ -33,6 +33,7 @@ type Config struct {
 	UpperdirLabel bool   `toml:"upperdir_label"`
 }
 
+// 注册overlay快照插件
 func init() {
 	plugin.Register(&plugin.Registration{
 		Type:   plugin.SnapshotPlugin,

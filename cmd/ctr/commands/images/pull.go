@@ -75,7 +75,7 @@ command. As part of this process, we do the following:
 			Usage: "Set the max concurrent downloads for each pull",
 		},
 		cli.BoolTFlag{
-			Name:  "local",
+			Name:  "local", // 默认为false
 			Usage: "Fetch content from local client rather than using transfer service",
 		},
 	),
@@ -87,6 +87,7 @@ command. As part of this process, we do the following:
 			return fmt.Errorf("please provide an image reference to pull")
 		}
 
+		// 实例化containerd的客户端工具，可以通过grpc访问containerd提供的各种服务
 		client, ctx, cancel, err := commands.NewClient(context)
 		if err != nil {
 			return err
