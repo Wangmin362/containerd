@@ -252,12 +252,16 @@ type WalkFunc func(context.Context, Info) error
 //
 // Alternatively, for most container runs, snapshotter.Remove() will be called to
 // signal the snapshotter to abandon the changes.
+// 1、key的格式为：default/<index>/<digest>，譬如：default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+// 2、parent的格式和key的格式是一样的，都是同样的含义
 type Snapshotter interface {
 	// Stat returns the info for an active or committed snapshot by name or
 	// key.
 	//
 	// Should be used for parent resolution, existence checks and to discern
 	// the kind of snapshot.
+	// 1、key的格式为：default/<index>/<digest>，譬如：default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+	// 2、直接从/v1/snapshots/<key>桶中读取inodes, size, kind, parent, createTime, updateTime, labels属性
 	Stat(ctx context.Context, key string) (Info, error)
 
 	// Update updates the info for a snapshot.
@@ -273,6 +277,10 @@ type Snapshotter interface {
 	// Callers should take this into consideration. Implementations should
 	// attempt to honor context cancellation and avoid taking locks when making
 	// the calculation.
+	// 1、key的格式为：default/<index>/<digest>，譬如：default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+	// 2、直接从/v1/snapshots/<key>桶中读取kind, id属性
+	// 3、如果当前的Kind类型为KindActive，那么从/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>/fs
+	// 路径中获取磁盘的使用信息
 	Usage(ctx context.Context, key string) (Usage, error)
 
 	// Mounts returns the mounts for the active snapshot transaction identified

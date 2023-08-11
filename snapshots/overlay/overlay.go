@@ -42,6 +42,7 @@ const upperdirKey = "containerd.io/snapshot/overlay.upperdir"
 
 // SnapshotterConfig is used to configure the overlay snapshotter instance
 type SnapshotterConfig struct {
+	// TODO 什么叫做异步移除？
 	asyncRemove   bool
 	upperdirLabel bool
 }
@@ -88,25 +89,32 @@ func NewSnapshotter(root string, opts ...Opt) (snapshots.Snapshotter, error) {
 		}
 	}
 
+	// 创建/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs目录
 	if err := os.MkdirAll(root, 0700); err != nil {
 		return nil, err
 	}
+	// 所谓的d_type实际上是Linux内核中的一种数据结构，用于保存某些数据。而不同的文件系统可以选择性的实现d_type特性，overlayfs文件系统
+	// 是一种上层的文件系统，其底层的文件系统可以是ext4或者xfs文件系统。想要使用overlay文件系统必须开启d_type特性。
 	supportsDType, err := fs.SupportsDType(root)
 	if err != nil {
 		return nil, err
 	}
+	// 如果当前的文件系统不支持d_type，就无法使用overlay文件系统
 	if !supportsDType {
 		return nil, fmt.Errorf("%s does not support d_type. If the backing filesystem is xfs, please reformat with ftype=1 to enable d_type support", root)
 	}
+	// 把某些元数据保存在/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/metadata.db文件当中
 	ms, err := storage.NewMetaStore(filepath.Join(root, "metadata.db"))
 	if err != nil {
 		return nil, err
 	}
 
+	// 创建/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots目录
 	if err := os.Mkdir(filepath.Join(root, "snapshots"), 0700); err != nil && !os.IsExist(err) {
 		return nil, err
 	}
 	// figure out whether "userxattr" option is recognized by the kernel && needed
+	// TODO linux操作系统的扩展属性
 	userxattr, err := overlayutils.NeedsUserXAttr(root)
 	if err != nil {
 		logrus.WithError(err).Warnf("cannot detect whether \"userxattr\" option needs to be used, assuming to be %v", userxattr)
@@ -127,9 +135,13 @@ func NewSnapshotter(root string, opts ...Opt) (snapshots.Snapshotter, error) {
 //
 // Should be used for parent resolution, existence checks and to discern
 // the kind of snapshot.
+// 1、key的格式为：default/<index>/<digest>，譬如：default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+// 2、直接从/v1/snapshots/<key>桶中读取inodes, size, kind, parent, createTime, updateTime, labels属性
 func (o *snapshotter) Stat(ctx context.Context, key string) (info snapshots.Info, err error) {
 	var id string
 	if err := o.ms.WithTransaction(ctx, false, func(ctx context.Context) error {
+		// key的格式为：default/<index>/<digest>，譬如：default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+		// 直接从/v1/snapshots/<key>桶中读取inodes, size, kind, parent, createTime, updateTime, labels属性
 		id, info, _, err = storage.GetInfo(ctx, key)
 		return err
 	}); err != nil {
@@ -180,14 +192,19 @@ func (o *snapshotter) Usage(ctx context.Context, key string) (_ snapshots.Usage,
 		id    string
 	)
 	if err := o.ms.WithTransaction(ctx, false, func(ctx context.Context) error {
+		// key的格式为：default/<index>/<digest>，譬如：default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+		// 直接从/v1/snapshots/<key>桶中读取kind, id属性
 		id, info, usage, err = storage.GetInfo(ctx, key)
 		return err
 	}); err != nil {
 		return usage, err
 	}
 
+	// 如果当前快照为KindActive专改，需要从磁盘中加载usage信息
 	if info.Kind == snapshots.KindActive {
+		// 快照路径为：/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>/fs
 		upperPath := o.upperPath(id)
+		// 通过读取文件信息获取磁盘使用量
 		du, err := fs.DiskUsage(ctx, upperPath)
 		if err != nil {
 			// TODO(stevvooe): Consider not reporting an error in this case.
@@ -513,6 +530,7 @@ func (o *snapshotter) Close() error {
 }
 
 // supportsIndex checks whether the "index=off" option is supported by the kernel.
+// 判断当前操作操作系统是否支持索引
 func supportsIndex() bool {
 	if _, err := os.Stat("/sys/module/overlay/parameters/index"); err == nil {
 		return true

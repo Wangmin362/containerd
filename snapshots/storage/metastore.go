@@ -58,6 +58,49 @@ type Snapshot struct {
 	ParentIDs []string
 }
 
+/*
+- v1
+- parents
+  010002: default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+  020003: default/6/sha256:d6cd83226886b0015ae158eaa533d2054970b6cd7353b69027b73eca8b19f7c9
+  030004: default/8/sha256:64248ceb66c340b117152a623ce7e9d1ee82b47cb05b1784a88158926b18d682
+  040005: default/10/sha256:fa32510685b5d0f9502eb9a257affc81768b778a7935e74c94820dc6aa52b557
+  050006: default/12/sha256:89e899eda66e049f4155e9517ae1e382b07448d8b3a510cfdf78835c6e75d1df
+  060008: default/14/69012b2c5cdc12c1b1de1c997f0677308eab8f16b0c925267452ec1b3b138b7f
+- snapshots
+  - default/10/sha256:fa32510685b5d0f9502eb9a257affc81768b778a7935e74c94820dc6aa52b557
+	+ labels
+	createdat: 010000000edc5f632d242f116bffff
+	id: 05
+	inodes: 04
+	kind: 03
+	parent: default/8/sha256:64248ceb66c340b117152a623ce7e9d1ee82b47cb05b1784a88158926b18d682
+	size: 00
+	updatedat: 010000000edc5f632d242f116bffff
+  + default/12/sha256:89e899eda66e049f4155e9517ae1e382b07448d8b3a510cfdf78835c6e75d1df
+  + default/14/69012b2c5cdc12c1b1de1c997f0677308eab8f16b0c925267452ec1b3b138b7f
+  + default/2/sha256:b2d5eeeaba3a22b9b8aa97261957974a6bd65274ebd43e1d81d0a7b8b752b116
+  + default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+  - default/6/sha256:d6cd83226886b0015ae158eaa533d2054970b6cd7353b69027b73eca8b19f7c9
+	+ labels
+	createdat: 010000000edc5f632d02185c08ffff
+	id: 03
+	inodes: 940d
+	kind: 03
+	parent: default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+	size: 8080af03
+	updatedat: 010000000edc5f632d02185c08ffff
+  - default/8/sha256:64248ceb66c340b117152a623ce7e9d1ee82b47cb05b1784a88158926b18d682
+	+ labels
+	createdat: 010000000edc5f632d23ddac34ffff
+	id: 04
+	inodes: fe01
+	kind: 03
+	parent: default/6/sha256:d6cd83226886b0015ae158eaa533d2054970b6cd7353b69027b73eca8b19f7c9
+	size: 80c0a318
+	updatedat: 010000000edc5f632d23ddac34ffff
+*/
+
 // MetaStore is used to store metadata related to a snapshot driver. The
 // MetaStore is intended to store metadata related to name, state and
 // parentage. Using the MetaStore is not required to implement a snapshot

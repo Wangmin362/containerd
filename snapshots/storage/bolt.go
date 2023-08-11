@@ -73,6 +73,8 @@ func getParentPrefix(b []byte) uint64 {
 
 // GetInfo returns the snapshot Info directly from the metadata. Requires a
 // context with a storage transaction.
+// key的格式为：default/<index>/<digest>，譬如：default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+// 直接从/v1/snapshots/<key>桶中读取inodes, size, kind, parent, createTime, updateTime, labels属性
 func GetInfo(ctx context.Context, key string) (string, snapshots.Info, snapshots.Usage, error) {
 	var (
 		id uint64
@@ -82,7 +84,9 @@ func GetInfo(ctx context.Context, key string) (string, snapshots.Info, snapshots
 		}
 	)
 	err := withSnapshotBucket(ctx, key, func(ctx context.Context, bkt, pbkt *bolt.Bucket) error {
+		// 直接从/v1/snapshot/defalut/<index>/<digest>桶中读取inodes, size属性
 		getUsage(bkt, &su)
+		// 直接从/v1/snapshot/defalut/<index>/<digest>桶中读取kind, parent, createTime, updateTime, labels属性
 		return readSnapshot(bkt, &id, &si)
 	})
 	if err != nil {
@@ -434,6 +438,7 @@ func IDMap(ctx context.Context) (map[string]string, error) {
 	return m, nil
 }
 
+// 获取/v1/snapshots桶，从meta.db中观察，可以发现key = default/<index>/<digest>
 func withSnapshotBucket(ctx context.Context, key string, fn func(context.Context, *bolt.Bucket, *bolt.Bucket) error) error {
 	tx, ok := ctx.Value(transactionKey{}).(*bolt.Tx)
 	if !ok {
@@ -447,6 +452,7 @@ func withSnapshotBucket(ctx context.Context, key string, fn func(context.Context
 	if bkt == nil {
 		return fmt.Errorf("snapshots bucket does not exist: %w", errdefs.ErrNotFound)
 	}
+
 	bkt = bkt.Bucket([]byte(key))
 	if bkt == nil {
 		return fmt.Errorf("snapshot does not exist: %w", errdefs.ErrNotFound)
@@ -518,6 +524,7 @@ func readID(bkt *bolt.Bucket) uint64 {
 	return id
 }
 
+// 直接从/v1/snapshot/defalut/<index>/<digest>桶中读取kind, parent, createTime, updateTime, labels属性
 func readSnapshot(bkt *bolt.Bucket, id *uint64, si *snapshots.Info) error {
 	if id != nil {
 		*id = readID(bkt)
