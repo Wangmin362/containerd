@@ -45,6 +45,7 @@ type Kind uint8
 
 // definitions of snapshot kinds
 const (
+	// TODO 这几个状态分别代表了什么含义？
 	KindUnknown Kind = iota
 	KindView
 	KindActive
@@ -101,7 +102,9 @@ func (k *Kind) UnmarshalJSON(b []byte) error {
 // Info provides information about a particular snapshot.
 // JSON marshalling is supported for interacting with tools like ctr,
 type Info struct {
-	Kind   Kind   // active or committed snapshot
+	Kind Kind // active or committed snapshot
+	// key的格式为：default/<index>/<digest>，譬如：default/149/sha256:bb6ca16af05663a487a1ec91ad60e7debed33c1cd44e4387ca5042b3c6644402
+	// TODO name的格式？
 	Name   string // name or key of snapshot
 	Parent string `json:",omitempty"` // name of parent snapshot
 
@@ -267,6 +270,8 @@ type Snapshotter interface {
 	// Update updates the info for a snapshot.
 	//
 	// Only mutable properties of a snapshot may be updated.
+	// 1、根据快照的key，更新快照的标签信息
+	// 2、如果开启了upperdirLabel，那么会增加containerd.io/snapshot/overlay.upperdir = /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>/fs的标签
 	Update(ctx context.Context, info Info, fieldpaths ...string) (Info, error)
 
 	// Usage returns the resource usage of an active or committed snapshot
@@ -281,6 +286,7 @@ type Snapshotter interface {
 	// 2、直接从/v1/snapshots/<key>桶中读取kind, id属性
 	// 3、如果当前的Kind类型为KindActive，那么从/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>/fs
 	// 路径中获取磁盘的使用信息
+	// 4、根据快照的key获取镜像的磁盘使用情况，譬如inodes数量，以及镜像大小
 	Usage(ctx context.Context, key string) (Usage, error)
 
 	// Mounts returns the mounts for the active snapshot transaction identified
@@ -288,6 +294,7 @@ type Snapshotter interface {
 	// available only for active snapshots.
 	//
 	// This can be used to recover mounts after calling View or Prepare.
+	// TODO 根据快照的key获取当前快照信息，并返回当前快照的挂载路径（包括parent）
 	Mounts(ctx context.Context, key string) ([]mount.Mount, error)
 
 	// Prepare creates an active snapshot identified by key descending from the
@@ -304,6 +311,9 @@ type Snapshotter interface {
 	// one is done with the transaction, Remove should be called on the key.
 	//
 	// Multiple calls to Prepare or View with the same key should fail.
+	// 1、所谓的创建快照，其实仅仅是报快照的元信息保存到boltdb当中，然后在创建/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>目录
+	// 其中，快照的ID是通过boltdb的桶序列号生成的
+	// 2、Prepare创建的是KindView类型的快照
 	Prepare(ctx context.Context, key, parent string, opts ...Opt) ([]mount.Mount, error)
 
 	// View behaves identically to Prepare except the result may not be
@@ -319,6 +329,9 @@ type Snapshotter interface {
 	// Commit may not be called on the provided key and will return an error.
 	// To collect the resources associated with key, Remove must be called with
 	// key as the argument.
+	// 1、所谓的创建快照，其实仅仅是报快照的元信息保存到boltdb当中，然后在创建/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>目录
+	// 其中，快照的ID是通过boltdb的桶序列号生成的
+	// 2、View创建的是KindView类型的快照
 	View(ctx context.Context, key, parent string, opts ...Opt) ([]mount.Mount, error)
 
 	// Commit captures the changes between key and its parent into a snapshot
@@ -329,6 +342,7 @@ type Snapshotter interface {
 	// active snapshot.
 	//
 	// After commit, the snapshot identified by key is removed.
+	// 实际上就是把处于KindActive的快照修改为KindCommitted状态，然后更新元数据信息
 	Commit(ctx context.Context, name, key string, opts ...Opt) error
 
 	// Remove the committed or active snapshot by the provided key.
@@ -337,6 +351,10 @@ type Snapshotter interface {
 	//
 	// If the snapshot is a parent of another snapshot, its children must be
 	// removed before proceeding.
+	// 1、根据快照的key，删除镜像
+	// 2、实际上镜像数据有两个部分，一部分称之为元数据，保存在boltdb当中，主要是镜像的一些属性信息，譬如kind, labels, size, inodes, id, leabels
+	// 等等；另外一部分则是进项的正式数据，以文件的形式（bolb）保存在磁盘上。因此删除快照的时候，需要删除两个部分，也即是元数据这真实数据。
+	// 3、根据用户参数的设置，真实数据的删除可能是异步删除，这里只删除元数据
 	Remove(ctx context.Context, key string) error
 
 	// Walk will call the provided function for each snapshot in the
@@ -347,6 +365,7 @@ type Snapshotter interface {
 	//  parent
 	//  kind (active,view,committed)
 	//  labels.(label)
+	// 遍历所有的快照，并按照调用方指定的选择器过滤出调用方需要的快照
 	Walk(ctx context.Context, fn WalkFunc, filters ...string) error
 
 	// Close releases the internal resources.
@@ -355,6 +374,7 @@ type Snapshotter interface {
 	// but not mandatory.
 	//
 	// Close returns nil when it is already closed.
+	// TODO 什么叫做关闭快照器？
 	Close() error
 }
 

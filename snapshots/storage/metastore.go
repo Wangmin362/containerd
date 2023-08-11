@@ -53,8 +53,10 @@ type Transactor interface {
 // the last index. The last index should always be considered the active
 // snapshots immediate parent.
 type Snapshot struct {
-	Kind      snapshots.Kind
-	ID        string
+	// 当前快照的状态
+	Kind snapshots.Kind
+	ID   string
+	// 当前快照的所有Parent ID
 	ParentIDs []string
 }
 

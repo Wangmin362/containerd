@@ -49,6 +49,7 @@ var (
 
 // parentKey returns a composite key of the parent and child identifiers. The
 // parts of the key are separated by a zero byte.
+// 返回一个联合key
 func parentKey(parent, child uint64) []byte {
 	b := make([]byte, binary.Size([]uint64{parent, child})+1)
 	i := binary.PutUvarint(b, parent)
@@ -97,15 +98,19 @@ func GetInfo(ctx context.Context, key string) (string, snapshots.Info, snapshots
 }
 
 // UpdateInfo updates an existing snapshot info's data
+// 实际上更新快照信息只能更新快照的标签以及更新时间信息，这里更新的也只是快照的元数据信息，数据保存在boltdb当中
 func UpdateInfo(ctx context.Context, info snapshots.Info, fieldpaths ...string) (snapshots.Info, error) {
 	updated := snapshots.Info{
 		Name: info.Name,
 	}
+	// 获取/v1/snapshots以及/v1/parents桶，并传给func
 	err := withBucket(ctx, func(ctx context.Context, bkt, pbkt *bolt.Bucket) error {
+		// 获取/v1/snapshots/<key>桶，这里的key的格式为：default/<index>/<digest>
 		sbkt := bkt.Bucket([]byte(info.Name))
 		if sbkt == nil {
 			return fmt.Errorf("snapshot does not exist: %w", errdefs.ErrNotFound)
 		}
+		// 从/v1/snapshots/<key>桶中读取kind, parent, labels, createTime, updateTime
 		if err := readSnapshot(sbkt, nil, &updated); err != nil {
 			return err
 		}
@@ -149,12 +154,14 @@ func UpdateInfo(ctx context.Context, info snapshots.Info, fieldpaths ...string) 
 // WalkInfo iterates through all metadata Info for the stored snapshots and
 // calls the provided function for each. Requires a context with a storage
 // transaction.
+// 遍历所有的快照，并按照调用方指定的选择器过滤出调用方需要的快照
 func WalkInfo(ctx context.Context, fn snapshots.WalkFunc, fs ...string) error {
 	filter, err := filters.ParseAll(fs...)
 	if err != nil {
 		return err
 	}
 	// TODO: allow indexes (name, parent, specific labels)
+	// 获取/v1/snapshots以及/v1/parents桶，并传给func
 	return withBucket(ctx, func(ctx context.Context, bkt, pbkt *bolt.Bucket) error {
 		return bkt.ForEach(func(k, v []byte) error {
 			// skip non buckets
@@ -181,26 +188,35 @@ func WalkInfo(ctx context.Context, fn snapshots.WalkFunc, fs ...string) error {
 
 // GetSnapshot returns the metadata for the active or view snapshot transaction
 // referenced by the given key. Requires a context with a storage transaction.
+// 根据快照的key，获取当前快照信息，其中把包括快照的状态，ID以及当前快照的所有Parent ID
 func GetSnapshot(ctx context.Context, key string) (s Snapshot, err error) {
+	// 获取/v1/snapshots以及/v1/parents桶，并传给func
 	err = withBucket(ctx, func(ctx context.Context, bkt, pbkt *bolt.Bucket) error {
+		// 获取/v1/snapshots/<key>桶，key的格式为：default/<id>/<digest>
 		sbkt := bkt.Bucket([]byte(key))
 		if sbkt == nil {
 			return fmt.Errorf("snapshot does not exist: %w", errdefs.ErrNotFound)
 		}
 
+		// 获取当前快照的id
 		s.ID = fmt.Sprintf("%d", readID(sbkt))
+		// 获取当前快照的kind
 		s.Kind = readKind(sbkt)
 
+		// 如果当前的状态既不是KindActive也不是KindView，就直接报错
 		if s.Kind != snapshots.KindActive && s.Kind != snapshots.KindView {
 			return fmt.Errorf("requested snapshot %v not active or view: %w", key, errdefs.ErrFailedPrecondition)
 		}
 
+		// 获取当前快照的parent的key
 		if parentKey := sbkt.Get(bucketKeyParent); len(parentKey) > 0 {
+			// 获取/v1/snapshots/<parent-key>桶,parent-key的格式为：default/<id>/<digest>
 			spbkt := bkt.Bucket(parentKey)
 			if spbkt == nil {
 				return fmt.Errorf("parent does not exist: %w", errdefs.ErrNotFound)
 			}
 
+			// 获取快照的所有parent的ID
 			s.ParentIDs, err = parents(bkt, spbkt, readID(spbkt))
 			if err != nil {
 				return fmt.Errorf("failed to get parent chain: %w", err)
@@ -216,33 +232,41 @@ func GetSnapshot(ctx context.Context, key string) (s Snapshot, err error) {
 }
 
 // CreateSnapshot inserts a record for an active or view snapshot with the provided parent.
+// 所谓的创建快照，其实仅仅是保存快照的元信息到boltdb当中
 func CreateSnapshot(ctx context.Context, kind snapshots.Kind, key, parent string, opts ...snapshots.Opt) (s Snapshot, err error) {
+	// 只能接受KindActive以及KindView类型的快照创建
 	switch kind {
 	case snapshots.KindActive, snapshots.KindView:
 	default:
 		return Snapshot{}, fmt.Errorf("snapshot type %v invalid; only snapshots of type Active or View can be created: %w", kind, errdefs.ErrInvalidArgument)
 	}
 	var base snapshots.Info
+	// 这里的opt，目前仅仅支持快照的label信息
 	for _, opt := range opts {
 		if err := opt(&base); err != nil {
 			return Snapshot{}, err
 		}
 	}
 
+	// 创建/v1/snapshots/parents桶，被传给func
 	err = createBucketIfNotExists(ctx, func(ctx context.Context, bkt, pbkt *bolt.Bucket) error {
 		var (
 			spbkt *bolt.Bucket
 		)
+		// 如果当前快照有parent
 		if parent != "" {
+			// 创建/v1/snapshots/<parent-key>桶
 			spbkt = bkt.Bucket([]byte(parent))
 			if spbkt == nil {
 				return fmt.Errorf("missing parent %q bucket: %w", parent, errdefs.ErrNotFound)
 			}
 
+			// parent快照的类型必须是KindCommitted
 			if readKind(spbkt) != snapshots.KindCommitted {
 				return fmt.Errorf("parent %q is not committed snapshot: %w", parent, errdefs.ErrInvalidArgument)
 			}
 		}
+		// 创建创建/v1/snapshots/<key>桶
 		sbkt, err := bkt.CreateBucket([]byte(key))
 		if err != nil {
 			if err == bolt.ErrBucketExists {
@@ -251,6 +275,7 @@ func CreateSnapshot(ctx context.Context, kind snapshots.Kind, key, parent string
 			return err
 		}
 
+		// 获取桶的下一个序列号，每用一次，增加一
 		id, err := bkt.NextSequence()
 		if err != nil {
 			return fmt.Errorf("unable to get identifier for snapshot %q: %w", key, err)
@@ -264,15 +289,19 @@ func CreateSnapshot(ctx context.Context, kind snapshots.Kind, key, parent string
 			Created: t,
 			Updated: t,
 		}
+		// 保存快照的ID, Kind, Parent, Label信息到/v1/snapshots/<key>桶中
 		if err := putSnapshot(sbkt, id, si); err != nil {
 			return err
 		}
 
+		// 如果父快照的桶不为空
 		if spbkt != nil {
+			// 读取父快照的ID
 			pid := readID(spbkt)
 
 			// Store a backlink from the key to the parent. Store the snapshot name
 			// as the value to allow following the backlink to the snapshot value.
+			// 在/v1/parents/<child-parent-composite>中存放信息
 			if err := pbkt.Put(parentKey(pid, id), []byte(key)); err != nil {
 				return fmt.Errorf("failed to write parent link for snapshot %q: %w", key, err)
 			}
@@ -303,34 +332,44 @@ func Remove(ctx context.Context, key string) (string, snapshots.Kind, error) {
 		si snapshots.Info
 	)
 
+	// 获取/v1/snapshots以及/v1/parents桶，并传给func
 	if err := withBucket(ctx, func(ctx context.Context, bkt, pbkt *bolt.Bucket) error {
+		// 获取/v1/snapshots/<key>桶
 		sbkt := bkt.Bucket([]byte(key))
 		if sbkt == nil {
 			return fmt.Errorf("snapshot %v: %w", key, errdefs.ErrNotFound)
 		}
 
+		// 直接从/v1/snapshot/<key>桶中读取kind, parent, createTime, updateTime, labels属性
 		if err := readSnapshot(sbkt, &id, &si); err != nil {
 			return fmt.Errorf("failed to read snapshot %s: %w", key, err)
 		}
 
+		// 如果当前存在/v1/parents桶
 		if pbkt != nil {
+			// TODO 这里是在干嘛？
 			k, _ := pbkt.Cursor().Seek(parentPrefixKey(id))
+			// TODO 这里是在判断什么？
 			if getParentPrefix(k) == id {
 				return fmt.Errorf("cannot remove snapshot with child: %w", errdefs.ErrFailedPrecondition)
 			}
 
+			// 如果当前快照有父快照
 			if si.Parent != "" {
+				// 获取/v1/snapshots/<parent-key>桶
 				spbkt := bkt.Bucket([]byte(si.Parent))
 				if spbkt == nil {
 					return fmt.Errorf("snapshot %v: %w", key, errdefs.ErrNotFound)
 				}
 
+				// TODO 删除key
 				if err := pbkt.Delete(parentKey(readID(spbkt), id)); err != nil {
 					return fmt.Errorf("failed to delete parent link: %w", err)
 				}
 			}
 		}
 
+		// 移除/v1/snapshots/<key>桶
 		if err := bkt.DeleteBucket([]byte(key)); err != nil {
 			return fmt.Errorf("failed to delete snapshot: %w", err)
 		}
@@ -349,18 +388,22 @@ func Remove(ctx context.Context, key string) (string, snapshots.Kind, error) {
 // lookup or removal. The returned string identifier for the committed snapshot
 // is the same identifier of the original active snapshot. The provided context
 // must contain a writable transaction.
+// 实际上就是把处于KindActive的快照修改为KindCommitted状态，然后更新元数据信息
 func CommitActive(ctx context.Context, key, name string, usage snapshots.Usage, opts ...snapshots.Opt) (string, error) {
 	var (
 		id   uint64
 		base snapshots.Info
 	)
+	// 目前（v1.7.2）快照只能修改标签信息
 	for _, opt := range opts {
 		if err := opt(&base); err != nil {
 			return "", err
 		}
 	}
 
+	// 获取/v1/snapshots以及/v1/parents桶，并传给func
 	if err := withBucket(ctx, func(ctx context.Context, bkt, pbkt *bolt.Bucket) error {
+		// 创建/v1/snapshots/<name>桶
 		dbkt, err := bkt.CreateBucket([]byte(name))
 		if err != nil {
 			if err == bolt.ErrBucketExists {
@@ -368,16 +411,19 @@ func CommitActive(ctx context.Context, key, name string, usage snapshots.Usage, 
 			}
 			return fmt.Errorf("committed snapshot %v: %w", name, err)
 		}
+		// 获取/v1/snapshots/<key>桶
 		sbkt := bkt.Bucket([]byte(key))
 		if sbkt == nil {
 			return fmt.Errorf("failed to get active snapshot %q: %w", key, errdefs.ErrNotFound)
 		}
 
 		var si snapshots.Info
+		// 从/v1/snapshots/<key>桶中读取快照信息
 		if err := readSnapshot(sbkt, &id, &si); err != nil {
 			return fmt.Errorf("failed to read active snapshot %q: %w", key, err)
 		}
 
+		// 只有KindActive状态的快照才可以提交
 		if si.Kind != snapshots.KindActive {
 			return fmt.Errorf("snapshot %q is not active: %w", key, errdefs.ErrFailedPrecondition)
 		}
@@ -388,15 +434,18 @@ func CommitActive(ctx context.Context, key, name string, usage snapshots.Usage, 
 		// Replace labels, do not inherit
 		si.Labels = base.Labels
 
+		// 修改快照到状态以及更新时间，保存到boltdb当中
 		if err := putSnapshot(dbkt, id, si); err != nil {
 			return err
 		}
+		// 修改快照使用的inodes大小以及磁盘大小到boltdb当中
 		if err := putUsage(dbkt, usage); err != nil {
 			return err
 		}
 		if err := bkt.DeleteBucket([]byte(key)); err != nil {
 			return fmt.Errorf("failed to delete active snapshot %q: %w", key, err)
 		}
+		// 如果当前快照有parent，保存/v1/parents/<child-parent-composite>
 		if si.Parent != "" {
 			spbkt := bkt.Bucket([]byte(si.Parent))
 			if spbkt == nil {
@@ -419,8 +468,10 @@ func CommitActive(ctx context.Context, key, name string, usage snapshots.Usage, 
 }
 
 // IDMap returns all the IDs mapped to their key
+// 读取所有快照的ID映射关系放入到map当中，map的key为快照ID，而value为快照的Key
 func IDMap(ctx context.Context) (map[string]string, error) {
 	m := map[string]string{}
+	// 获取/v1/snapshots以及/v1/parents桶，并传给fn
 	if err := withBucket(ctx, func(ctx context.Context, bkt, _ *bolt.Bucket) error {
 		return bkt.ForEach(func(k, v []byte) error {
 			// skip non buckets
@@ -461,6 +512,7 @@ func withSnapshotBucket(ctx context.Context, key string, fn func(context.Context
 	return fn(ctx, bkt, vbkt.Bucket(bucketKeyParents))
 }
 
+// 获取/v1/snapshots以及/v1/parents桶，并传给fn
 func withBucket(ctx context.Context, fn func(context.Context, *bolt.Bucket, *bolt.Bucket) error) error {
 	tx, ok := ctx.Value(transactionKey{}).(*bolt.Tx)
 	if !ok {
@@ -473,6 +525,7 @@ func withBucket(ctx context.Context, fn func(context.Context, *bolt.Bucket, *bol
 	return fn(ctx, bkt.Bucket(bucketKeySnapshot), bkt.Bucket(bucketKeyParents))
 }
 
+// 创建/v1/snapshots/parents桶
 func createBucketIfNotExists(ctx context.Context, fn func(context.Context, *bolt.Bucket, *bolt.Bucket) error) error {
 	tx, ok := ctx.Value(transactionKey{}).(*bolt.Tx)
 	if !ok {
@@ -494,6 +547,7 @@ func createBucketIfNotExists(ctx context.Context, fn func(context.Context, *bolt
 	return fn(ctx, sbkt, pbkt)
 }
 
+// 获取快照的所有parent的ID
 func parents(bkt, pbkt *bolt.Bucket, parent uint64) (parents []string, err error) {
 	for {
 		parents = append(parents, fmt.Sprintf("%d", parent))
@@ -507,6 +561,7 @@ func parents(bkt, pbkt *bolt.Bucket, parent uint64) (parents []string, err error
 			return nil, fmt.Errorf("missing parent: %w", errdefs.ErrNotFound)
 		}
 
+		// 读取parent的ID
 		parent = readID(pbkt)
 	}
 }
@@ -519,12 +574,13 @@ func readKind(bkt *bolt.Bucket) (k snapshots.Kind) {
 	return
 }
 
+// 获取快照层的ID
 func readID(bkt *bolt.Bucket) uint64 {
 	id, _ := binary.Uvarint(bkt.Get(bucketKeyID))
 	return id
 }
 
-// 直接从/v1/snapshot/defalut/<index>/<digest>桶中读取kind, parent, createTime, updateTime, labels属性
+// 直接从/v1/snapshot/<key>桶中读取kind, parent, createTime, updateTime, labels属性
 func readSnapshot(bkt *bolt.Bucket, id *uint64, si *snapshots.Info) error {
 	if id != nil {
 		*id = readID(bkt)
@@ -547,6 +603,7 @@ func readSnapshot(bkt *bolt.Bucket, id *uint64, si *snapshots.Info) error {
 	return nil
 }
 
+// 保存快照的ID, Kind, Parent, Label信息到/v1/snapshots/<key>桶中
 func putSnapshot(bkt *bolt.Bucket, id uint64, si snapshots.Info) error {
 	idEncoded, err := encodeID(id)
 	if err != nil {
