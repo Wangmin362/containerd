@@ -36,8 +36,9 @@ const (
 	MediaTypeDockerSchema2LayerGzip        = "application/vnd.docker.image.rootfs.diff.tar.gzip"
 	MediaTypeDockerSchema2LayerForeignGzip = "application/vnd.docker.image.rootfs.foreign.diff.tar.gzip"
 	MediaTypeDockerSchema2Config           = "application/vnd.docker.container.image.v1+json"
-	MediaTypeDockerSchema2Manifest         = "application/vnd.docker.distribution.manifest.v2+json"
-	MediaTypeDockerSchema2ManifestList     = "application/vnd.docker.distribution.manifest.list.v2+json"
+	// TODO Manifest和ManifestList有何区别？
+	MediaTypeDockerSchema2Manifest     = "application/vnd.docker.distribution.manifest.v2+json"
+	MediaTypeDockerSchema2ManifestList = "application/vnd.docker.distribution.manifest.list.v2+json"
 
 	// Checkpoint/Restore Media Types
 
@@ -187,6 +188,7 @@ func IsKnownConfig(mt string) bool {
 }
 
 // ChildGCLabels returns the label for a given descriptor to reference it
+// TODO 这里增加标签的意义何在？ 似乎是为了将来的垃圾回收
 func ChildGCLabels(desc ocispec.Descriptor) []string {
 	mt := desc.MediaType
 	if IsKnownConfig(mt) {

@@ -98,9 +98,11 @@ func FetchHandler(ingester content.Ingester, fetcher Fetcher) images.HandlerFunc
 		}))
 
 		switch desc.MediaType {
+		// Schema1格式的镜像层已经不在支持拉取
 		case images.MediaTypeDockerSchema1Manifest:
 			return nil, fmt.Errorf("%v not supported", desc.MediaType)
 		default:
+			// 拉取镜像层
 			err := Fetch(ctx, ingester, fetcher, desc)
 			if errdefs.IsAlreadyExists(err) {
 				return nil, nil
@@ -111,15 +113,18 @@ func FetchHandler(ingester content.Ingester, fetcher Fetcher) images.HandlerFunc
 }
 
 // Fetch fetches the given digest into the provided ingester
+// 拉取镜像层
 func Fetch(ctx context.Context, ingester content.Ingester, fetcher Fetcher, desc ocispec.Descriptor) error {
 	log.G(ctx).Debug("fetch")
 
+	// 告诉Ingester需要下载镜像了，Ingester会在/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>创建目录
 	cw, err := content.OpenWriter(ctx, ingester, content.WithRef(MakeRefKey(ctx, desc)), content.WithDescriptor(desc))
 	if err != nil {
 		return err
 	}
 	defer cw.Close()
 
+	// 返回当前镜像的下载情况，这一步可以做到断点续传
 	ws, err := cw.Status()
 	if err != nil {
 		return err
@@ -131,6 +136,7 @@ func Fetch(ctx context.Context, ingester content.Ingester, fetcher Fetcher, desc
 		// into the content store. Error out here otherwise the error sent back is confusing
 		return fmt.Errorf("unable to fetch descriptor (%s) which reports content size of zero: %w", desc.Digest, errdefs.ErrInvalidArgument)
 	}
+	// 说明镜像已经下载完成
 	if ws.Offset == desc.Size {
 		// If writer is already complete, commit and return
 		err := cw.Commit(ctx, desc.Size, desc.Digest)
@@ -144,12 +150,14 @@ func Fetch(ctx context.Context, ingester content.Ingester, fetcher Fetcher, desc
 		return content.Copy(ctx, cw, bytes.NewReader(desc.Data), desc.Size, desc.Digest)
 	}
 
+	// 从镜像仓库中拉取数据
 	rc, err := fetcher.Fetch(ctx, desc)
 	if err != nil {
 		return err
 	}
 	defer rc.Close()
 
+	// 把从镜像仓库拉取到的数据写入到/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录当中
 	return content.Copy(ctx, cw, rc, desc.Size, desc.Digest)
 }
 

@@ -175,7 +175,9 @@ func (c *Client) Pull(ctx context.Context, ref string, opts ...RemoteOpt) (_ Ima
 func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, limit int) (images.Image, error) {
 	ctx, span := tracing.StartSpan(ctx, tracing.Name(pullSpanPrefix, "fetch"))
 	defer span.End()
+	// 内容服务，用于保存镜像到/var/lib/containerd/io.containerd.content.v1.content/blobs当中
 	store := c.ContentStore()
+	// 根据镜像名获取镜像的描述信息，主要是摘要数据
 	name, desc, err := rCtx.Resolver.Resolve(ctx, ref)
 	if err != nil {
 		return images.Image{}, fmt.Errorf("failed to resolve reference %q: %w", ref, err)
@@ -194,6 +196,7 @@ func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, lim
 		limiter       *semaphore.Weighted
 	)
 
+	// Schema1这个版本已经被废弃，现在基本都是使用的Schema2
 	if desc.MediaType == images.MediaTypeDockerSchema1Manifest && rCtx.ConvertSchema1 {
 		schema1Converter := schema1.NewConverter(store, fetcher)
 
@@ -206,9 +209,12 @@ func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, lim
 		}
 	} else {
 		// Get all the children for a descriptor
+		// 用于从Manifest文件或者Index文件中读取当前镜像的镜像层信息，所谓的children其实就是当前镜像的镜像层
 		childrenHandler := images.ChildrenHandler(store)
 		// Set any children labels for that content
+		// 用于给镜像层增加新的标签
 		childrenHandler = images.SetChildrenMappedLabels(store, childrenHandler, rCtx.ChildLabelMap)
+		// TODO 这里实在处理什么
 		if rCtx.AllMetadata {
 			// Filter manifests by platforms but allow to handle manifest
 			// and configuration for not-target platforms
@@ -233,12 +239,14 @@ func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, lim
 			},
 		)
 
+		// TODO 这里为了干啥？
 		appendDistSrcLabelHandler, err := docker.AppendDistributionSourceLabel(store, ref)
 		if err != nil {
 			return images.Image{}, err
 		}
 
 		handlers := append(rCtx.BaseHandlers,
+			// TODO 这里才是真正拉取镜像的地方
 			remotes.FetchHandler(store, fetcher),
 			convertibleHandler,
 			childrenHandler,
@@ -260,10 +268,12 @@ func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, lim
 		limiter = semaphore.NewWeighted(int64(rCtx.MaxConcurrentDownloads))
 	}
 
+	// 递归拉取镜像，实际上真真拉取镜像的代码，被包装到了handler当中
 	if err := images.Dispatch(ctx, handler, limiter, desc); err != nil {
 		return images.Image{}, err
 	}
 
+	// TODO 这里在干嘛?
 	if isConvertible {
 		if desc, err = converterFunc(ctx, desc); err != nil {
 			return images.Image{}, err

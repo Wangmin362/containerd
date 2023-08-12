@@ -320,40 +320,50 @@ func (c *Client) LoadContainer(ctx context.Context, id string) (Container, error
 type RemoteContext struct {
 	// Resolver is used to resolve names to objects, fetchers, and pushers.
 	// If no resolver is provided, defaults to Docker registry resolver.
+	// 解析器可以用于解析镜像，譬如通过Resolve接口获取镜像的摘要
 	Resolver remotes.Resolver
 
 	// PlatformMatcher is used to match the platforms for an image
 	// operation and define the preference when a single match is required
 	// from multiple platforms.
+	// TODO 如何理解平台匹配，猜测这里说的是镜像是否支持当前的平台，只有匹配了当前的平台，才有下载镜像的意义
 	PlatformMatcher platforms.MatchComparer
 
 	// Unpack is done after an image is pulled to extract into a snapshotter.
 	// It is done simultaneously for schema 2 images when they are pulled.
 	// If an image is not unpacked on pull, it can be unpacked any time
 	// afterwards. Unpacking is required to run an image.
+	// 1、如果为true，那么镜像在下载完成之后，会解压为快照。否则如果为false，镜像下载完成之后将不会坐解压为快照的动作。
+	// 2、一个镜像想要变为容器运行起来，必须要解压为快照。如果我们设置为false，那么在运行容器之前，镜像需要解压为快照
 	Unpack bool
 
 	// UnpackOpts handles options to the unpack call.
+	// TODO 详细研究解压操作
 	UnpackOpts []UnpackOpt
 
 	// Snapshotter used for unpacking
+	// 使用哪个快照器解压，目前containerd支持overlay, devmapper, native, btrfs等等，默认使用的就是overlay快照器
 	Snapshotter string
 
 	// SnapshotterOpts are additional options to be passed to a snapshotter during pull
+	// 快照选项，目前仅支持修改快照的标签
 	SnapshotterOpts []snapshots.Opt
 
 	// Labels to be applied to the created image
+	// 创建镜像的时候需要添加的标签，可以通过在ctr image pull的时候增加--label参数指定
 	Labels map[string]string
 
 	// BaseHandlers are a set of handlers which get are called on dispatch.
 	// These handlers always get called before any operation specific
 	// handlers.
+	// TODO 如何理解这个这个属性？
 	BaseHandlers []images.Handler
 
 	// HandlerWrapper wraps the handler which gets sent to dispatch.
 	// Unlike BaseHandlers, this can run before and after the built
 	// in handlers, allowing operations to run on the descriptor
 	// after it has completed transferring.
+	// TODO 如何理解这玩意？
 	HandlerWrapper func(images.Handler) images.Handler
 
 	// ConvertSchema1 is whether to convert Docker registry schema 1
@@ -361,6 +371,7 @@ type RemoteContext struct {
 	// to schema 1 will return an error since schema 1 is not supported.
 	//
 	// Deprecated: use Schema 2 or OCI images.
+	// 这里应该说的是docker镜像仓库Manifest的第一个标准，不过目前基本都是使用的标准2
 	ConvertSchema1 bool
 
 	// Platforms defines which platforms to handle when doing the image operation.
@@ -376,6 +387,7 @@ type RemoteContext struct {
 	MaxConcurrentUploadedLayers int
 
 	// AllMetadata downloads all manifests and known-configuration files
+	// TODO 这玩意是用来干嘛的
 	AllMetadata bool
 
 	// ChildLabelMap sets the labels used to reference child objects in the content
@@ -426,7 +438,8 @@ func (c *Client) Fetch(ctx context.Context, ref string, opts ...RemoteOpt) (imag
 	}
 	defer done(ctx)
 
-	img, err := c.fetch(ctx, fetchCtx, ref, 0) // 如何理解fetch这个动作？
+	// 所谓的fetch实际上就是下载镜像
+	img, err := c.fetch(ctx, fetchCtx, ref, 0)
 	if err != nil {
 		return images.Image{}, err
 	}

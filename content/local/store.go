@@ -478,7 +478,7 @@ func (s *store) total(ingestPath string) int64 {
 // ref at a time.
 //
 // The argument `ref` is used to uniquely identify a long-lived writer transaction.
-// 用于生成ingest文件
+// 用于生成ingest文件，下载镜像层时只需要传递镜像层的名字（ref），以及镜像层的描述符ocispec.Descriptor
 func (s *store) Writer(ctx context.Context, opts ...content.WriterOpt) (content.Writer, error) {
 	var wOpts content.WriterOpts
 	for _, opt := range opts {
@@ -521,7 +521,10 @@ func (s *store) Writer(ctx context.Context, opts ...content.WriterOpt) (content.
 }
 
 func (s *store) resumeStatus(ref string, total int64, digester digest.Digester) (content.Status, error) {
+	// path = /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
+	// data = /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>data
 	path, _, data := s.ingestPaths(ref)
+	// 读取镜像下载状态
 	status, err := s.status(path)
 	if err != nil {
 		return status, fmt.Errorf("failed reading status of resume write: %w", err)
@@ -552,9 +555,12 @@ func (s *store) resumeStatus(ref string, total int64, digester digest.Digester) 
 
 // writer provides the main implementation of the Writer method. The caller
 // must hold the lock correctly and release on error if there is a problem.
+// 1、ref为镜像名，total为镜像大小， expected为镜像数据计算出来的摘要信息。如果镜像下载完成，但是计算出来的摘要信息和希望的
+// 摘要信息对不上，说明镜像下载的有问题
 func (s *store) writer(ctx context.Context, ref string, total int64, expected digest.Digest) (content.Writer, error) {
 	// TODO(stevvooe): Need to actually store expected here. We have
 	// code in the service that shouldn't be dealing with this.
+	// 如果当前镜像层已经下载，返回错误信息
 	if expected != "" {
 		p, err := s.blobPath(expected)
 		if err != nil {
@@ -565,9 +571,13 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 		}
 	}
 
+	// path = /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
+	// refp = /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/ref
+	// data = /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>data
 	path, refp, data := s.ingestPaths(ref)
 
 	var (
+		// 摘要生成器
 		digester  = digest.Canonical.Digester()
 		offset    int64
 		startedAt time.Time
@@ -576,10 +586,13 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 
 	foundValidIngest := false
 	// ensure that the ingest path has been created.
+	// 创建/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录
+	// 如果目录已经存在，那么需要判断这个目录是否是我们当前正在下载的镜像所对应的目录，如果是，那么继续下载。实际上这个功能就是断点续传
 	if err := os.Mkdir(path, 0755); err != nil {
 		if !os.IsExist(err) {
 			return nil, err
 		}
+		// 恢复镜像下载点，进行断点续传
 		status, err := s.resumeStatus(ref, total, digester)
 		if err == nil {
 			foundValidIngest = true
@@ -592,6 +605,7 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 		}
 	}
 
+	// 如果当前镜像之前没有下载过，那么需要下载
 	if !foundValidIngest {
 		startedAt = time.Now()
 		updatedAt = startedAt
@@ -693,6 +707,8 @@ func (s *store) ingestRoot(ref string) string {
 // - root: entire ingest directory
 // - ref: name of the starting ref, must be unique
 // - data: file where data is written
+// /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/ref
+// /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>data
 func (s *store) ingestPaths(ref string) (string, string, string) {
 	var (
 		fp = s.ingestRoot(ref)

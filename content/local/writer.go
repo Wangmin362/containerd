@@ -34,13 +34,13 @@ import (
 
 // writer represents a write transaction against the blob store.
 type writer struct {
-	s         *store
-	fp        *os.File // opened data file
-	path      string   // path to writer dir
-	ref       string   // ref key
-	offset    int64
-	total     int64
-	digester  digest.Digester
+	s         *store          // local.store，用于实现文件的增删改查
+	fp        *os.File        // opened data file
+	path      string          // path to writer dir  /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
+	ref       string          // ref key /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/ref
+	offset    int64           // 偏移量，当偏移量等于total，说明镜像层下载完成
+	total     int64           // 当前要下载的镜像层的总大小
+	digester  digest.Digester // 摘要生成器
 	startedAt time.Time
 	updatedAt time.Time
 }
@@ -66,6 +66,7 @@ func (w *writer) Digest() digest.Digest {
 //
 // Note that writes are unbuffered to the backing file. When writing, it is
 // recommended to wrap in a bufio.Writer or, preferably, use io.CopyBuffer.
+// 向镜像层中写入数据，同时更新镜像层的哈希
 func (w *writer) Write(p []byte) (n int, err error) {
 	n, err = w.fp.Write(p)
 	w.digester.Hash().Write(p[:n])
@@ -74,8 +75,11 @@ func (w *writer) Write(p []byte) (n int, err error) {
 	return n, err
 }
 
+// Commit 执行此动作时，表明镜像已经下载完成，主要是把/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录中的数据拷贝到
+// /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>当中
 func (w *writer) Commit(ctx context.Context, size int64, expected digest.Digest, opts ...content.Opt) error {
 	// Ensure even on error the writer is fully closed
+	// 当镜像下载完成之后，自然需要解锁
 	defer unlock(w.ref)
 
 	var base content.Info
@@ -92,6 +96,7 @@ func (w *writer) Commit(ctx context.Context, size int64, expected digest.Digest,
 		return fmt.Errorf("cannot commit on closed writer: %w", errdefs.ErrFailedPrecondition)
 	}
 
+	// 刷新内存中的数据到磁盘上
 	if err := fp.Sync(); err != nil {
 		fp.Close()
 		return fmt.Errorf("sync failed: %w", err)
@@ -110,29 +115,35 @@ func (w *writer) Commit(ctx context.Context, size int64, expected digest.Digest,
 		return fmt.Errorf("unexpected commit size %d, expected %d: %w", fi.Size(), size, errdefs.ErrFailedPrecondition)
 	}
 
+	// 计算镜像层的摘要，如果摘要计算出来的和希望摘要不等，说明镜像下载的有问题
 	dgst := w.digester.Digest()
 	if expected != "" && expected != dgst {
 		return fmt.Errorf("unexpected commit digest %s, expected %s: %w", dgst, expected, errdefs.ErrFailedPrecondition)
 	}
 
 	var (
-		ingest    = filepath.Join(w.path, "data")
+		// /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/data
+		ingest = filepath.Join(w.path, "data")
+		// /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 		target, _ = w.s.blobPath(dgst) // ignore error because we calculated this dgst
 	)
 
 	// make sure parent directories of blob exist
+	// 创建目录，准备把下载完成的ingest镜像数据拷贝到blob当中
 	if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 		return err
 	}
 
 	if _, err := os.Stat(target); err == nil {
 		// collision with the target file!
+		// 清空目录
 		if err := os.RemoveAll(w.path); err != nil {
 			log.G(ctx).WithField("ref", w.ref).WithField("path", w.path).Error("failed to remove ingest directory")
 		}
 		return fmt.Errorf("content %v: %w", dgst, errdefs.ErrAlreadyExists)
 	}
 
+	// 重命名，其实就是拷贝数据
 	if err := os.Rename(ingest, target); err != nil {
 		return err
 	}
@@ -147,10 +158,12 @@ func (w *writer) Commit(ctx context.Context, size int64, expected digest.Digest,
 	}
 
 	// clean up!!
+	// 清理/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录中的所有数据
 	if err := os.RemoveAll(w.path); err != nil {
 		log.G(ctx).WithField("ref", w.ref).WithField("path", w.path).Error("failed to remove ingest directory")
 	}
 
+	// 设置标签
 	if w.s.ls != nil && base.Labels != nil {
 		if err := w.s.ls.Set(dgst, base.Labels); err != nil {
 			log.G(ctx).WithField("digest", dgst).Error("failed to set labels")
@@ -165,6 +178,7 @@ func (w *writer) Commit(ctx context.Context, size int64, expected digest.Digest,
 	//
 	// NOTE: Windows does not support this operation
 	if runtime.GOOS != "windows" {
+		// 修改权限
 		if err := os.Chmod(target, (fi.Mode()&os.ModePerm)&^0333); err != nil {
 			log.G(ctx).WithField("ref", w.ref).Error("failed to make readonly")
 		}

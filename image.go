@@ -305,6 +305,7 @@ func (i *image) Spec(ctx context.Context) (ocispec.Image, error) {
 }
 
 // UnpackConfig provides configuration for the unpack of an image
+// 镜像解压配置
 type UnpackConfig struct {
 	// ApplyOpts for applying a diff to a snapshotter
 	ApplyOpts []diff.ApplyOpt
@@ -312,10 +313,12 @@ type UnpackConfig struct {
 	SnapshotOpts []snapshots.Opt
 	// CheckPlatformSupported is whether to validate that a snapshotter
 	// supports an image's platform before unpacking
+	// 如果为true，那么containerd将会在解压之前校验一个snapshotter插件是否支持当前镜像的平台
 	CheckPlatformSupported bool
 	// DuplicationSuppressor is used to make sure that there is only one
 	// in-flight fetch request or unpack handler for a given descriptor's
 	// digest or chain ID.
+	// 用于确保当前只有一个协程在下载相同的镜像，以及只有一个协程解压相同的镜像，实际上这玩意就是一把锁
 	DuplicationSuppressor kmutex.KeyedLocker
 }
 

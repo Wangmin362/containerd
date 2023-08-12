@@ -249,6 +249,7 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 	)
 
 	if dgst != "" {
+		// 校验摘要是否有效
 		if err := dgst.Validate(); err != nil {
 			// need to fail here, since we can't actually resolve the invalid
 			// digest.
@@ -266,6 +267,7 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 		caps |= HostCapabilityResolve
 	}
 
+	// 过滤出有拉取镜像能力的仓库
 	hosts := base.filterHosts(caps)
 	if len(hosts) == 0 {
 		return "", ocispec.Descriptor{}, fmt.Errorf("no resolve hosts: %w", errdefs.ErrNotFound)
@@ -280,11 +282,13 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 		for _, host := range hosts {
 			ctx := log.WithLogger(ctx, log.G(ctx).WithField("host", host.Host))
 
+			// 发出类似https://registry-1.docker.io/v2/library/redis/manifests/6.2.13-alpine的请求
 			req := base.request(host, http.MethodHead, u...)
 			if err := req.addNamespace(base.refspec.Hostname()); err != nil {
 				return "", ocispec.Descriptor{}, err
 			}
 
+			// 设置请求头
 			for key, value := range r.resolveHeader {
 				req.header[key] = append(req.header[key], value...)
 			}
@@ -601,6 +605,7 @@ func (r *request) do(ctx context.Context) (*http.Response, error) {
 	return resp, nil
 }
 
+// 解析请求，如果失败，尝试重新下载
 func (r *request) doWithRetries(ctx context.Context, responses []*http.Response) (*http.Response, error) {
 	resp, err := r.do(ctx)
 	if err != nil {

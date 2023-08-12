@@ -96,6 +96,7 @@ Most of this is experimental and there are few leaps to make this work.`,
 }
 
 // FetchConfig for content fetch
+// FetchConfig实际上就是ctr image pull的各个参数
 type FetchConfig struct {
 	// Resolver
 	Resolver remotes.Resolver
@@ -117,6 +118,9 @@ type FetchConfig struct {
 
 // NewFetchConfig returns the default FetchConfig from cli flags 从用户输入的命令行中获取Fetch配置
 func NewFetchConfig(ctx context.Context, clicontext *cli.Context) (*FetchConfig, error) {
+	// 获取镜像解析器，用于获取镜像对应的摘要，实际上解析器是向镜像仓库发送了一个请求获取到的镜像摘要
+	// 通过向镜像库发送HEAD请求，URL为：https://registry-1.docker.io/v2/library/redis/manifests/6.2.13-alpine
+	// 镜像摘要发在请求头：Docker-Content-Digest当中，内容为镜像摘要
 	resolver, err := commands.GetResolver(ctx, clicontext)
 	if err != nil {
 		return nil, err
@@ -162,6 +166,7 @@ func NewFetchConfig(ctx context.Context, clicontext *cli.Context) (*FetchConfig,
 func Fetch(ctx context.Context, client *containerd.Client, ref string, config *FetchConfig) (images.Image, error) {
 	ongoing := NewJobs(ref)
 
+	// TODO 如果开启了Trace，containerd做了什么操作？
 	if config.TraceHTTP {
 		ctx = httptrace.WithClientTrace(ctx, commands.NewDebugClientTrace(ctx))
 	}
@@ -170,13 +175,15 @@ func Fetch(ctx context.Context, client *containerd.Client, ref string, config *F
 	progress := make(chan struct{})
 
 	go func() {
-		if config.ProgressOutput != nil { // 显示下载镜像的进度条
+		// 显示下载镜像的进度条
+		if config.ProgressOutput != nil {
 			// no progress bar, because it hides some debug logs
 			ShowProgress(pctx, ongoing, client.ContentStore(), config.ProgressOutput)
 		}
 		close(progress)
 	}()
 
+	// 用于添加镜像层的任务下载
 	h := images.HandlerFunc(func(ctx context.Context, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
 		if desc.MediaType != images.MediaTypeDockerSchema1Manifest {
 			ongoing.Add(desc)
@@ -357,6 +364,7 @@ func NewJobs(name string) *Jobs {
 }
 
 // Add adds a descriptor to be tracked
+// 添加一个镜像层下载任务
 func (j *Jobs) Add(desc ocispec.Descriptor) {
 	j.mu.Lock()
 	defer j.mu.Unlock()

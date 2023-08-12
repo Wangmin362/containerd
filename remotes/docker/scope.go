@@ -29,6 +29,7 @@ import (
 // RepositoryScope returns a repository scope string such as "repository:foo/bar:pull"
 // for "host/foo/bar:baz".
 // When push is true, both pull and push are added to the scope.
+// TODO 这玩意干嘛的？
 func RepositoryScope(refspec reference.Spec, push bool) (string, error) {
 	u, err := url.Parse("dummy://" + refspec.Locator)
 	if err != nil {
@@ -47,6 +48,7 @@ type tokenScopesKey struct{}
 
 // ContextWithRepositoryScope returns a context with tokenScopesKey{} and the repository scope value.
 func ContextWithRepositoryScope(ctx context.Context, refspec reference.Spec, push bool) (context.Context, error) {
+	// TODO 这玩意干嘛的？
 	s, err := RepositoryScope(refspec, push)
 	if err != nil {
 		return nil, err

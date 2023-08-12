@@ -164,6 +164,8 @@ type Writer interface {
 	// size and expected can be zero-value when unknown.
 	// Commit always closes the writer, even on error.
 	// ErrAlreadyExists aborts the writer.
+	// 执行此动作时，表明镜像已经下载完成，主要是把/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录中的数据拷贝到
+	// /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>当中
 	Commit(ctx context.Context, size int64, expected digest.Digest, opts ...Opt) error
 
 	// Status returns the current state of write

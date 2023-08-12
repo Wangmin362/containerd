@@ -58,11 +58,15 @@ func NewReader(ra ReaderAt) io.Reader {
 // ReadBlob retrieves the entire contents of the blob from the provider.
 //
 // Avoid using this for large blobs, such as layers.
+// 如果镜像描述符中携带了镜像数据，那么直接返回，如果没有，那么直接从磁盘当中读取镜像信息。
+// 读取的目录位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs
 func ReadBlob(ctx context.Context, provider Provider, desc ocispec.Descriptor) ([]byte, error) {
+	// TODO 这里应该说的是镜像描述符中就自带了镜像数据，因此不需要读取本地磁盘文件缓存的数据，直接返回即可
 	if int64(len(desc.Data)) == desc.Size && digest.FromBytes(desc.Data) == desc.Digest {
 		return desc.Data, nil
 	}
 
+	// 读取blob数据，这里实际上是直接读取的文件
 	ra, err := provider.ReaderAt(ctx, desc)
 	if err != nil {
 		return nil, err
@@ -111,6 +115,7 @@ func OpenWriter(ctx context.Context, cs Ingester, opts ...WriterOpt) (Writer, er
 		err   error
 		retry = 16
 	)
+	// for循环是为了能够重试镜像的下载，直到ctx超时
 	for {
 		cw, err = cs.Writer(ctx, opts...)
 		if err != nil {

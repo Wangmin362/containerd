@@ -59,8 +59,10 @@ func passwordPrompt() (string, error) {
 
 // GetResolver prepares the resolver from the environment and options
 func GetResolver(ctx gocontext.Context, clicontext *cli.Context) (remotes.Resolver, error) {
+	// 镜像仓库的用户
 	username := clicontext.String("user")
 	var secret string
+	// 解析用户名以及密码
 	if i := strings.IndexByte(username, ':'); i > 0 {
 		secret = username[i+1:]
 		username = username[0:i]
@@ -69,6 +71,7 @@ func GetResolver(ctx gocontext.Context, clicontext *cli.Context) (remotes.Resolv
 		Tracker: PushTracker,
 	}
 	if username != "" {
+		// 让用户输入密码
 		if secret == "" {
 			fmt.Printf("Password: ")
 
@@ -90,6 +93,7 @@ func GetResolver(ctx gocontext.Context, clicontext *cli.Context) (remotes.Resolv
 		// Only one host
 		return username, secret, nil
 	}
+	// 如果指定了plain-http参数，那么使用http协议下载镜像
 	if clicontext.Bool("plain-http") {
 		hostOptions.DefaultScheme = "http"
 	}
@@ -98,6 +102,7 @@ func GetResolver(ctx gocontext.Context, clicontext *cli.Context) (remotes.Resolv
 		return nil, err
 	}
 	hostOptions.DefaultTLS = defaultTLS
+	// TODO hosts-dir参数到底是用来干嘛的？
 	if hostDir := clicontext.String("hosts-dir"); hostDir != "" {
 		hostOptions.HostDir = config.HostDirFromRoot(hostDir)
 	}

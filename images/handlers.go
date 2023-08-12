@@ -47,11 +47,14 @@ var (
 )
 
 // Handler handles image manifests
+// TODO 如何理解这个接口的抽象，拉取镜像、推送镜像、导入镜像、到处镜像都是这个镜像
+// TODO 这里的Handler的写法非常值得好好学习和吸收
 type Handler interface {
 	Handle(ctx context.Context, desc ocispec.Descriptor) (subdescs []ocispec.Descriptor, err error)
 }
 
 // HandlerFunc function implementing the Handler interface
+// Handler接口的适配器，用于接口的强制转换
 type HandlerFunc func(ctx context.Context, desc ocispec.Descriptor) (subdescs []ocispec.Descriptor, err error)
 
 // Handle image manifests
@@ -194,8 +197,11 @@ func Dispatch(ctx context.Context, handler Handler, limiter *semaphore.Weighted,
 //
 // One can also replace this with another implementation to allow descending of
 // arbitrary types.
+// 用于从Manifest文件或者Index文件中读取当前镜像的镜像层信息
 func ChildrenHandler(provider content.Provider) HandlerFunc {
 	return func(ctx context.Context, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
+		// 1、一个ocispec.Descriptor实际上就是一个镜像层
+		// 2、Children用于从Manifest文件或者Index文件中读取当前镜像的镜像层信息
 		return Children(ctx, provider, desc)
 	}
 }
@@ -213,11 +219,14 @@ func SetChildrenLabels(manager content.Manager, f HandlerFunc) HandlerFunc {
 // The label map allows the caller to control the labels per child descriptor.
 // For returned labels, the index of the child will be appended to the end
 // except for the first index when the returned label does not end with '.'.
+// 用于给镜像层增加新的标签
 func SetChildrenMappedLabels(manager content.Manager, f HandlerFunc, labelMap func(ocispec.Descriptor) []string) HandlerFunc {
 	if labelMap == nil {
+		// TODO 这里增加标签的意义何在？ 似乎是为了将来的垃圾回收
 		labelMap = ChildGCLabels
 	}
 	return func(ctx context.Context, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
+		// 获取到当前的镜像的所有镜像层
 		children, err := f(ctx, desc)
 		if err != nil {
 			return children, err

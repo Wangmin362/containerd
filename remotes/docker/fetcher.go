@@ -40,6 +40,7 @@ type dockerFetcher struct {
 func (r dockerFetcher) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error) {
 	ctx = log.WithLogger(ctx, log.G(ctx).WithField("digest", desc.Digest))
 
+	// 判断当前镜像仓库是否支持拉取镜像
 	hosts := r.filterHosts(HostCapabilityPull)
 	if len(hosts) == 0 {
 		return nil, fmt.Errorf("no pull hosts: %w", errdefs.ErrNotFound)

@@ -148,12 +148,14 @@ command. As part of this process, we do the following:
 		defer done(ctx)
 
 		// TODO: Handle this locally via transfer config
+		// 1、构建镜像层拉取配置，最主要是初始化了Resolver，它可以获取当前要下载镜像的摘要
+		// 2、FetchConfig其实就是ctr image pull的各个参数，比较重要的就是利用这些参数实例化了Resolver，用于解决镜像拉取、推送功能
 		config, err := content.NewFetchConfig(ctx, context)
 		if err != nil {
 			return err
 		}
 
-		// TODO 如何理解fetch动作？
+		// 所谓的Fetch，实际上就是镜像拉取，主要过程如下：
 		img, err := content.Fetch(ctx, client, ref, config)
 		if err != nil {
 			return err

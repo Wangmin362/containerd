@@ -335,15 +335,20 @@ func Check(ctx context.Context, provider content.Provider, image ocispec.Descrip
 }
 
 // Children returns the immediate children of content described by the descriptor.
+// 1、一个ocispec.Descriptor实际上就是一个镜像层
+// 2、Children用于从Manifest文件或者Index文件中读取当前镜像的镜像层信息
 func Children(ctx context.Context, provider content.Provider, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
 	var descs []ocispec.Descriptor
 	switch desc.MediaType {
 	case MediaTypeDockerSchema2Manifest, ocispec.MediaTypeImageManifest:
+		// 如果镜像描述符中携带了镜像数据，那么直接返回，如果没有，那么直接从磁盘当中读取镜像信息。
+		// 读取的目录位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs
 		p, err := content.ReadBlob(ctx, provider, desc)
 		if err != nil {
 			return nil, err
 		}
 
+		// 校验镜像的MediaType
 		if err := validateMediaType(p, desc.MediaType); err != nil {
 			return nil, fmt.Errorf("children: invalid desc %s: %w", desc.Digest, err)
 		}
@@ -351,6 +356,7 @@ func Children(ctx context.Context, provider content.Provider, desc ocispec.Descr
 		// TODO(stevvooe): We just assume oci manifest, for now. There may be
 		// subtle differences from the docker version.
 		var manifest ocispec.Manifest
+		// 反序列化
 		if err := json.Unmarshal(p, &manifest); err != nil {
 			return nil, err
 		}
@@ -358,16 +364,20 @@ func Children(ctx context.Context, provider content.Provider, desc ocispec.Descr
 		descs = append(descs, manifest.Config)
 		descs = append(descs, manifest.Layers...)
 	case MediaTypeDockerSchema2ManifestList, ocispec.MediaTypeImageIndex:
+		// 如果镜像描述符中携带了镜像数据，那么直接返回，如果没有，那么直接从磁盘当中读取镜像信息。
+		// 读取的目录位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs
 		p, err := content.ReadBlob(ctx, provider, desc)
 		if err != nil {
 			return nil, err
 		}
 
+		// 校验当前镜像层的MediaType
 		if err := validateMediaType(p, desc.MediaType); err != nil {
 			return nil, fmt.Errorf("children: invalid desc %s: %w", desc.Digest, err)
 		}
 
 		var index ocispec.Index
+		// 反序列化
 		if err := json.Unmarshal(p, &index); err != nil {
 			return nil, err
 		}
