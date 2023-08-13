@@ -87,6 +87,7 @@ type Authorizer interface {
 // ResolverOptions are used to configured a new Docker register resolver
 type ResolverOptions struct {
 	// Hosts returns registry host configurations for a namespace.
+	// 代表了当前请求的镜像仓库的客户端配置，譬如如何认证、URL是啥，Http还是HTTPS，请求头是啥，当前镜像仓库所支持的能力
 	Hosts RegistryHosts
 
 	// Headers are the HTTP request header fields sent by the resolver
@@ -133,6 +134,7 @@ func DefaultHost(ns string) (string, error) {
 	return ns, nil
 }
 
+// dockerResolver实际上就是镜像仓库的客户端工具，只不过里面可以针对同一个镜像，配置多个镜像仓库下载地址，但是优先会按照定义的顺序下载镜像
 type dockerResolver struct {
 	hosts         RegistryHosts
 	header        http.Header
@@ -146,6 +148,7 @@ func NewResolver(options ResolverOptions) remotes.Resolver {
 		options.Tracker = NewInMemoryTracker()
 	}
 
+	// 这里的Header应该就是通过在/etc/containerd/certs.d/<host>/config.toml文件中获取到的header
 	if options.Headers == nil {
 		options.Headers = make(http.Header)
 	}
@@ -157,8 +160,10 @@ func NewResolver(options ResolverOptions) remotes.Resolver {
 	if _, ok := options.Headers["Accept"]; !ok {
 		// set headers for all the types we support for resolution.
 		resolveHeader.Set("Accept", strings.Join([]string{
+			// 下面两个是docker自定义的MediaType
 			images.MediaTypeDockerSchema2Manifest,
 			images.MediaTypeDockerSchema2ManifestList,
+			// 下面两个是OCI自定义的MediaType
 			ocispec.MediaTypeImageManifest,
 			ocispec.MediaTypeImageIndex, "*/*",
 		}, ", "))
@@ -167,6 +172,7 @@ func NewResolver(options ResolverOptions) remotes.Resolver {
 		delete(options.Headers, "Accept")
 	}
 
+	// 配置默认的镜像解析器
 	if options.Hosts == nil {
 		var opts []RegistryOpt
 		if options.Host != nil {
@@ -229,9 +235,10 @@ var _ remotes.Resolver = &dockerResolver{}
 
 // Resolve
 // 1、ref为镜像名
-// 2、
+// 2、返回值为OCI组织定义的标准描述符
+// 3、该方法主要用于向镜像仓库获取当前要下载镜像的摘要信息
 func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocispec.Descriptor, error) {
-	// 解析镜像名
+	// 通过传入的镜像名，解析镜像，获取可以下载当前镜像的镜像仓库的客户端配置
 	base, err := r.resolveDockerBase(ref)
 	if err != nil {
 		return "", ocispec.Descriptor{}, err
@@ -248,6 +255,10 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 		caps     = HostCapabilityPull
 	)
 
+	// 1、通常情况下，下载镜像都是通过tag的方式下载镜像，譬如：ctr --debug image pull --hosts-dir=/etc/containerd/certs.d registry.k8s.io/sig-storage/csi-provisioner:v3.5.0
+	// 这种情况下解析出来的镜像就没有摘要
+	// 2、但是我们也可以通过摘要镜像下载，譬如：ctr --debug image pull --hosts-dir=/etc/containerd/certs.d registry.k8s.io/sig-storage/csi-provisioner@sha256:d078dc174323407e8cc6f0f9abd4efaac5db27838f1564d0253d5e3233e3f17f
+	// 这种情况下，解析出来的镜像就有摘要
 	if dgst != "" {
 		// 校验摘要是否有效
 		if err := dgst.Validate(); err != nil {
@@ -262,7 +273,7 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 		// fallback to blobs on not found.
 		paths = append(paths, []string{"blobs", dgst.String()})
 	} else {
-		// Add
+		// Add，如果没有解析到摘要，那么refspec.Object肯定是镜像的Tag
 		paths = append(paths, []string{"manifests", refspec.Object})
 		caps |= HostCapabilityResolve
 	}
@@ -279,10 +290,14 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 	}
 
 	for _, u := range paths {
+		// 1、根据/etc/containerd/certs.d/<host>/config.yaml配置，按照定义的顺序，进行镜像的请求
+		// 2、所以，我们应该尽可能的把速度最快的镜像仓库放在最前面，也就是说hosts配置应该按照镜像仓的速度优先进行定义
 		for _, host := range hosts {
 			ctx := log.WithLogger(ctx, log.G(ctx).WithField("host", host.Host))
 
+			// 1、向镜像仓库发出HEAD请求，拉取manifests
 			// 发出类似https://registry-1.docker.io/v2/library/redis/manifests/6.2.13-alpine的请求
+			// 或者：https://k8s.m.daocloud.io/v2/sig-storage/csi-provisioner/manifests/v3.5.0?ns=registry.k8s.io
 			req := base.request(host, http.MethodHead, u...)
 			if err := req.addNamespace(base.refspec.Hostname()); err != nil {
 				return "", ocispec.Descriptor{}, err
@@ -294,6 +309,7 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 			}
 
 			log.G(ctx).Debug("resolving")
+			// 请求镜像仓库
 			resp, err := req.doWithRetries(ctx, nil)
 			if err != nil {
 				if errors.Is(err, ErrInvalidAuthorization) {
@@ -322,16 +338,20 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 				}
 				return "", ocispec.Descriptor{}, remoteerrors.NewUnexpectedStatusErr(resp)
 			}
+			// 响应值的大小， TODO 对于Head请求，这里的size肯定是等于0的
 			size := resp.ContentLength
+			// 获取镜像仓库的响应MediaType
 			contentType := getManifestMediaType(resp)
 
 			// if no digest was provided, then only a resolve
 			// trusted registry was contacted, in this case use
 			// the digest header (or content from GET)
+			// 如果镜像拉取的时候使用的是Tag,那么这里一定是空的，因为dgst是从镜像名中解析出来的
 			if dgst == "" {
 				// this is the only point at which we trust the registry. we use the
 				// content headers to assemble a descriptor for the name. when this becomes
 				// more robust, we mostly get this information from a secure trust store.
+				// 从请求头中获取到摘要
 				dgstHeader := digest.Digest(resp.Header.Get("Docker-Content-Digest"))
 
 				if dgstHeader != "" && size != -1 {
@@ -341,6 +361,7 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 					dgst = dgstHeader
 				}
 			}
+			// 如果没有正确获取到镜像摘要，那么使用GET方法获取menifest
 			if dgst == "" || size == -1 {
 				log.G(ctx).Debug("no Docker-Content-Digest header, fetching manifest instead")
 
@@ -417,6 +438,7 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 }
 
 func (r *dockerResolver) Fetcher(ctx context.Context, ref string) (remotes.Fetcher, error) {
+	// 通过传入的镜像名，解析镜像，获取可以下载当前镜像的镜像仓库的客户端配置
 	base, err := r.resolveDockerBase(ref)
 	if err != nil {
 		return nil, err
@@ -440,6 +462,7 @@ func (r *dockerResolver) Pusher(ctx context.Context, ref string) (remotes.Pusher
 	}, nil
 }
 
+// 通过传入的镜像名，解析镜像，获取可以下载当前镜像的镜像仓库的客户端配置
 func (r *dockerResolver) resolveDockerBase(ref string) (*dockerBase, error) {
 	// 解析镜像名
 	refspec, err := reference.Parse(ref)
@@ -451,14 +474,21 @@ func (r *dockerResolver) resolveDockerBase(ref string) (*dockerBase, error) {
 }
 
 type dockerBase struct {
-	refspec    reference.Spec
+	// 当前要下载的镜像，被解析为了两个部分，Locator为取出tag以及摘要的前半段，而Object则为tag或者摘要
+	refspec reference.Spec
+	// 仓库位置，为reference.Spec.Locator去除host的剩下部分
 	repository string
-	hosts      []RegistryHost
-	header     http.Header
+	// 下载当前镜像可以使用的镜像仓库
+	hosts []RegistryHost
+	// header为在/etc/containerd/certs.d/<host>/config.toml文件当中配置的请求头
+	header http.Header
 }
 
+// 获取当前镜像的镜像仓库配置
 func (r *dockerResolver) base(refspec reference.Spec) (*dockerBase, error) {
+	// 解析镜像所使用的镜像仓库的域名
 	host := refspec.Hostname()
+	// 找到当前域名的镜像配置
 	hosts, err := r.hosts(host)
 	if err != nil {
 		return nil, err
@@ -595,6 +625,7 @@ func (r *request) do(ctx context.Context) (*http.Response, error) {
 		tracing.WithHTTPRequest(req),
 	)
 	defer httpSpan.End()
+	// 发出请求
 	resp, err := client.Do(req)
 	if err != nil {
 		httpSpan.SetStatus(err)

@@ -55,6 +55,7 @@ var (
 // remote may use the digest portion directly or resolve it against a prefix.
 // If the object does not include the `@` symbol, the return value for `Digest`
 // will be empty.
+// 镜像名标准
 type Spec struct {
 	// Locator is the host and path portion of the specification. The host
 	// portion may refer to an actual host or just a namespace of related
@@ -62,6 +63,7 @@ type Spec struct {
 	//
 	// Typically, the locator may used to resolve the remote to fetch specific
 	// resources.
+	// 镜像名，但是没有tag,也没有摘要
 	Locator string
 
 	// Object contains the identifier for the remote resource. Classically,
@@ -124,6 +126,7 @@ func Parse(s string) (Spec, error) {
 //
 // Remotes are not required to directly access the resources at this host. This
 // method is provided for convenience.
+// 返回镜像的域名，但是不要URL
 func (r Spec) Hostname() string {
 	i := strings.Index(r.Locator, "/")
 

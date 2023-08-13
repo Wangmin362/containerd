@@ -66,14 +66,16 @@ func (c HostCapabilities) Has(t HostCapabilities) bool {
 // RegistryHost represents a complete configuration for a registry
 // host, representing the capabilities, authorizations, connection
 // configuration, and location.
+// 1、抽象的是一个镜像仓库的的客户端配置
+// 2、此配置是通过hostConfig配置加工而成的，hostConfig是通过解析/etc/containerd/certs.d/<host>/config.toml文件解析得到的
 type RegistryHost struct {
 	Client       *http.Client
-	Authorizer   Authorizer
-	Host         string
-	Scheme       string
-	Path         string
-	Capabilities HostCapabilities
-	Header       http.Header
+	Authorizer   Authorizer       // 认证器
+	Host         string           // host域名
+	Scheme       string           // http还是Https
+	Path         string           // URI
+	Capabilities HostCapabilities // 当前镜像仓库支持的能力
+	Header       http.Header      // 向这个镜像仓库发起请求时，需要添加的请求头
 }
 
 func (h RegistryHost) isProxy(refhost string) bool {

@@ -40,6 +40,9 @@ type Resolver interface {
 	// If the resolution fails, an error will be returned.
 	// 1、通过向镜像库发送HEAD请求，URL为：https://registry-1.docker.io/v2/library/redis/manifests/6.2.13-alpine
 	// 2、镜像摘要发在请求头：Docker-Content-Digest当中，内容为镜像摘要
+	// 3、ref为镜像名
+	// 4、返回值为OCI组织定义的标准描述符
+	// 5、该方法主要用于向镜像仓库获取当前要下载镜像的摘要信息
 	Resolve(ctx context.Context, ref string) (name string, desc ocispec.Descriptor, err error)
 
 	// Fetcher returns a new fetcher for the provided reference.

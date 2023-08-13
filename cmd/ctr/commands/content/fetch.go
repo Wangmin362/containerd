@@ -121,6 +121,7 @@ func NewFetchConfig(ctx context.Context, clicontext *cli.Context) (*FetchConfig,
 	// 获取镜像解析器，用于获取镜像对应的摘要，实际上解析器是向镜像仓库发送了一个请求获取到的镜像摘要
 	// 通过向镜像库发送HEAD请求，URL为：https://registry-1.docker.io/v2/library/redis/manifests/6.2.13-alpine
 	// 镜像摘要发在请求头：Docker-Content-Digest当中，内容为镜像摘要
+	// TODO NewFetchConfig核心是这里
 	resolver, err := commands.GetResolver(ctx, clicontext)
 	if err != nil {
 		return nil, err
@@ -130,9 +131,11 @@ func NewFetchConfig(ctx context.Context, clicontext *cli.Context) (*FetchConfig,
 		Labels:    clicontext.StringSlice("label"),
 		TraceHTTP: clicontext.Bool("http-trace"),
 	}
+	// 如果开启此选项，那么将会禁止打印镜像层下载进度条，同时会把每一条请求消息打印在屏幕上
 	if !clicontext.GlobalBool("debug") {
 		config.ProgressOutput = os.Stdout
 	}
+	// 如果开启了此选项，那么将会下载所有平台的镜像
 	if !clicontext.Bool("all-platforms") {
 		p := clicontext.StringSlice("platform")
 		if len(p) == 0 {
@@ -141,6 +144,7 @@ func NewFetchConfig(ctx context.Context, clicontext *cli.Context) (*FetchConfig,
 		config.Platforms = p
 	}
 
+	// TODO 这两个参数的区别是啥？
 	if clicontext.Bool("metadata-only") {
 		config.AllMetadata = true
 		// Any with an empty set is None
@@ -149,11 +153,13 @@ func NewFetchConfig(ctx context.Context, clicontext *cli.Context) (*FetchConfig,
 		config.AllMetadata = true
 	}
 
+	// 限制同时下载镜像的数量
 	if clicontext.IsSet("max-concurrent-downloads") {
 		mcd := clicontext.Int("max-concurrent-downloads")
 		config.RemoteOpts = append(config.RemoteOpts, containerd.WithMaxConcurrentDownloads(mcd))
 	}
 
+	// TODO 这参数是干嘛的？
 	if clicontext.IsSet("max-concurrent-uploaded-layers") {
 		mcu := clicontext.Int("max-concurrent-uploaded-layers")
 		config.RemoteOpts = append(config.RemoteOpts, containerd.WithMaxConcurrentUploadedLayers(mcu))

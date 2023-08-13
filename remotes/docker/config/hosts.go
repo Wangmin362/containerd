@@ -41,17 +41,40 @@ import (
 // UpdateClientFunc is a function that lets you to amend http Client behavior used by registry clients.
 type UpdateClientFunc func(client *http.Client) error
 
-type hostConfig struct {
-	scheme string
-	host   string
-	path   string
+/*
+cat > /etc/containerd/certs.d/docker.io/hosts.toml << EOF
+server = "https://docker.io"
+[host."https://dockerproxy.com"]
+  capabilities = ["pull", "resolve"]
 
+[host."https://docker.m.daocloud.io"]
+  capabilities = ["pull", "resolve"]
+
+[host."https://reg-mirror.qiniu.com"]
+  capabilities = ["pull", "resolve"]
+
+[host."https://registry.docker-cn.com"]
+  capabilities = ["pull", "resolve"]
+
+[host."http://hub-mirror.c.163.com"]
+  capabilities = ["pull", "resolve"]
+EOF
+*/
+// hostConfig实际上可以理解为/etc/containerd/certs.d/<repository>配置
+type hostConfig struct {
+	scheme string // http还是https
+	host   string // host域名
+	path   string // URL
+
+	// 镜像仓库支持的能力
 	capabilities docker.HostCapabilities
 
 	caCerts     []string
 	clientPairs [][2]string
-	skipVerify  *bool
+	// 是否跳过HTTPS证书校验
+	skipVerify *bool
 
+	// 额外添加的请求头
 	header http.Header
 
 	// TODO: Add credential configuration (domain alias, username)
@@ -72,16 +95,22 @@ type HostOptions struct {
 // host creation options. The host directory can read hosts.toml or
 // certificate files laid out in the Docker specific layout.
 // If a `HostDir` function is not required, defaults are used.
+// ConfigureHosts函数的返回值为一个函数，该函数的作用是根据传入的host域名，在/etc/containerd/certs.d目录中找到这个host域名的镜像仓库
+// 配置，然后把这个配置解析出来，获取到拉取Host域名的镜像所支持的镜像仓库的客户端
 func ConfigureHosts(ctx context.Context, options HostOptions) docker.RegistryHosts {
 	return func(host string) ([]docker.RegistryHost, error) {
+		// hostConfig实际上可以理解为/etc/containerd/certs.d/<repository>配置
 		var hosts []hostConfig
 		if options.HostDir != nil {
+			// HostDir函数的作用就是在/etc/containerd/certs.d目录中找到参数host域名的仓库配置
 			dir, err := options.HostDir(host)
 			if err != nil && !errdefs.IsNotFound(err) {
 				return nil, err
 			}
 			if dir != "" {
 				log.G(ctx).WithField("dir", dir).Debug("loading host directory")
+				// 1、加载配置，dir目录为：/etc/containerd/certs.d/<host>
+				// 2、解析/etc/containerd/certs.d/<host>/hosts.toml配置
 				hosts, err = loadHostDir(ctx, dir)
 				if err != nil {
 					return nil, err
@@ -95,7 +124,10 @@ func ConfigureHosts(ctx context.Context, options HostOptions) docker.RegistryHos
 		if hosts == nil {
 			hosts = make([]hostConfig, 1)
 		}
+		// 什么时候会符合这个条件？，可以看到上面这个判断，如果没有配置/etc/containerd/certs.d目录，那么解析出来的hosts文件肯定为空
+		// 所以就会进入到下面这个逻辑
 		if len(hosts) > 0 && hosts[len(hosts)-1].host == "" {
+			// 如果请求的是docker官方镜像仓库，那么默认使用：https://registry-1.docker.io进行请求
 			if host == "docker.io" {
 				hosts[len(hosts)-1].scheme = "https"
 				hosts[len(hosts)-1].host = "registry-1.docker.io"
@@ -112,12 +144,14 @@ func ConfigureHosts(ctx context.Context, options HostOptions) docker.RegistryHos
 				}
 			} else {
 				hosts[len(hosts)-1].host = host
+				// 如果设置了plain-http=true，那么这里就会使用http的方式请求镜像仓库
 				if options.DefaultScheme != "" {
 					hosts[len(hosts)-1].scheme = options.DefaultScheme
 				} else {
 					hosts[len(hosts)-1].scheme = "https"
 				}
 			}
+			// TODO 这里的V2，指的是镜像的第二个标准？
 			hosts[len(hosts)-1].path = "/v2"
 			hosts[len(hosts)-1].capabilities = docker.HostCapabilityPull | docker.HostCapabilityResolve | docker.HostCapabilityPush
 		}
@@ -157,8 +191,10 @@ func ConfigureHosts(ctx context.Context, options HostOptions) docker.RegistryHos
 			authOpts = append(authOpts, docker.WithAuthCreds(options.Credentials))
 		}
 		authOpts = append(authOpts, options.AuthorizerOpts...)
+		// TODO 这里的认证器是如何工作的？ 可以参考：https://docs.docker.com/registry/spec/auth/
 		authorizer := docker.NewDockerAuthorizer(authOpts...)
 
+		// 把hostConfig配置加工成为RegistryHost，也就是不同的镜像仓库客户端配置
 		rhosts := make([]docker.RegistryHost, len(hosts))
 		for i, host := range hosts {
 
@@ -241,8 +277,13 @@ func ConfigureHosts(ctx context.Context, options HostOptions) docker.RegistryHos
 
 // HostDirFromRoot returns a function which finds a host directory
 // based at the given root.
+// HostDirFromRoot的返回值是一个函数，参数为一个host域名，返回值为/etc/containerd/certs.d/<repository>目录
+// 这个函数的作用就是在/etc/containerd/certs.d目录中找到参数host域名的仓库配置
 func HostDirFromRoot(root string) func(string) (string, error) {
+	// root参数一般设置为：/etc/containerd/certs.d目录
 	return func(host string) (string, error) {
+		// 1、用于获取/etc/containerd/certs.d目录中配置的仓库
+		// 2、从这里可以看出，仓库的使用是有顺序的，先使用不带端口的，然后使用带端口的，最后使用/etc/containerd/certs.d/_default配置
 		for _, p := range hostPaths(root, host) {
 			if _, err := os.Stat(p); err == nil {
 				return p, nil
@@ -255,6 +296,7 @@ func HostDirFromRoot(root string) func(string) (string, error) {
 }
 
 // hostDirectory converts ":port" to "_port_" in directory names
+// 如果当前仓库配置了端口，那么需要把端口去掉，才能取出host
 func hostDirectory(host string) string {
 	idx := strings.LastIndex(host, ":")
 	if idx > 0 {
@@ -263,7 +305,9 @@ func hostDirectory(host string) string {
 	return host
 }
 
+// 1、hostDir目录为：/etc/containerd/certs.d/<host>
 func loadHostDir(ctx context.Context, hostsDir string) ([]hostConfig, error) {
+	// 读取/etc/containerd/certs.d/<host>/hosts.toml配置
 	b, err := os.ReadFile(filepath.Join(hostsDir, "hosts.toml"))
 	if err != nil && !os.IsNotExist(err) {
 		return nil, err
@@ -273,9 +317,11 @@ func loadHostDir(ctx context.Context, hostsDir string) ([]hostConfig, error) {
 		// If hosts.toml does not exist, fallback to checking for
 		// certificate files based on Docker's certificate file
 		// pattern (".crt", ".cert", ".key" files)
+		// 如果不存在/etc/containerd/certs.d/<host>/hosts.toml文件，那么就从证书当中获取
 		return loadCertFiles(ctx, hostsDir)
 	}
 
+	// 解析/etc/containerd/certs.d/<host>/hosts.toml配置
 	hosts, err := parseHostsFile(hostsDir, b)
 	if err != nil {
 		log.G(ctx).WithError(err).Error("failed to decode hosts.toml")
@@ -286,18 +332,21 @@ func loadHostDir(ctx context.Context, hostsDir string) ([]hostConfig, error) {
 	return hosts, nil
 }
 
+// /etc/containerd/certs.d/<host>/hosts.toml文件当中尽可以配置这些内容
 type hostFileConfig struct {
 	// Capabilities determine what operations a host is
 	// capable of performing. Allowed values
 	//  - pull
 	//  - resolve
 	//  - push
+	// 镜像仓库，仅仅支持pull，resolve,push能力
 	Capabilities []string `toml:"capabilities"`
 
 	// CACert are the public key certificates for TLS
 	// Accepted types
 	// - string - Single file with certificate(s)
 	// - []string - Multiple files with certificates
+	// 当前仓库的证书
 	CACert interface{} `toml:"ca"`
 
 	// Client keypair(s) for TLS with client authentication
@@ -310,20 +359,43 @@ type hostFileConfig struct {
 	// SkipVerify skips verification of the server's certificate chain
 	// and host name. This should only be used for testing or in
 	// combination with other methods of verifying connections.
+	// 是否跳过校验镜像仓库的证书
 	SkipVerify *bool `toml:"skip_verify"`
 
 	// Header are additional header files to send to the server
+	// 向镜像仓库发起请求时，可以额外添加的请求头
 	Header map[string]interface{} `toml:"header"`
 
 	// OverridePath indicates the API root endpoint is defined in the URL
 	// path rather than by the API specification.
 	// This may be used with non-compliant OCI registries to override the
 	// API root endpoint.
+	// 是否使用配置中的URL覆盖
 	OverridePath bool `toml:"override_path"`
 
 	// TODO: Credentials: helper? name? username? alternate domain? token?
 }
 
+/*
+cat > /etc/containerd/certs.d/docker.io/hosts.toml << EOF
+server = "https://docker.io"
+[host."https://dockerproxy.com"]
+  capabilities = ["pull", "resolve"]
+
+[host."https://docker.m.daocloud.io"]
+  capabilities = ["pull", "resolve"]
+
+[host."https://reg-mirror.qiniu.com"]
+  capabilities = ["pull", "resolve"]
+
+[host."https://registry.docker-cn.com"]
+  capabilities = ["pull", "resolve"]
+
+[host."http://hub-mirror.c.163.com"]
+  capabilities = ["pull", "resolve"]
+EOF
+*/
+// 一个/etc/containerd/certs.d/<host>/hosts.toml文件当中，可能会配置多个镜像仓库，所以这里的返回值为数组
 func parseHostsFile(baseDir string, b []byte) ([]hostConfig, error) {
 	tree, err := toml.LoadBytes(b)
 	if err != nil {
@@ -344,6 +416,7 @@ func parseHostsFile(baseDir string, b []byte) ([]hostConfig, error) {
 		HostConfigs map[string]hostFileConfig `toml:"host"`
 	}{}
 
+	// 获取host配置，以定义的顺序进行排序，所以如果配置镜像加速，那么肯定是需要把速度最快的镜像仓库写在前面
 	orderedHosts, err := getSortedHosts(tree)
 	if err != nil {
 		return nil, err

@@ -67,7 +67,7 @@ command. As part of this process, we do the following:
 			Usage: "Pull metadata for all platforms",
 		},
 		cli.BoolFlag{
-			Name:  "print-chainid",
+			Name:  "print-chainid", // TODO chainID是啥？ 干嘛用的？
 			Usage: "Print the resulting image's chain ID",
 		},
 		cli.IntFlag{

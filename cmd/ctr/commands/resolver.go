@@ -102,11 +102,15 @@ func GetResolver(ctx gocontext.Context, clicontext *cli.Context) (remotes.Resolv
 		return nil, err
 	}
 	hostOptions.DefaultTLS = defaultTLS
-	// TODO hosts-dir参数到底是用来干嘛的？
+	// 1、hosts-dir参数可以通过--hosts-dir=/etc/containerd/certs.d来指定
+	// 2、hosts-dir参数主有以下几个作用：一：镜像加速 二：私仓证书配置  三：忽略私仓证书校验
 	if hostDir := clicontext.String("hosts-dir"); hostDir != "" {
+		// HostDirFromRoot的返回值是一个函数，参数为一个host域名，返回值为/etc/containerd/certs.d/<repository>目录
+		// 这个函数的作用就是在/etc/containerd/certs.d目录中找到参数host域名的仓库配置
 		hostOptions.HostDir = config.HostDirFromRoot(hostDir)
 	}
 
+	// 如果开启此选项，那么将会把收到的响应数据打印在标准输出当中
 	if clicontext.Bool("http-dump") {
 		hostOptions.UpdateClient = func(client *http.Client) error {
 			client.Transport = &DebugTransport{
@@ -117,6 +121,8 @@ func GetResolver(ctx gocontext.Context, clicontext *cli.Context) (remotes.Resolv
 		}
 	}
 
+	// ConfigureHosts函数的返回值为一个函数，该函数的作用是根据传入的host域名，在/etc/containerd/certs.d目录中找到这个host域名的镜像仓库
+	// 配置，然后把这个配置解析出来，获取到拉取Host域名的镜像所支持的镜像仓库的客户端
 	options.Hosts = config.ConfigureHosts(ctx, hostOptions)
 
 	return docker.NewResolver(options), nil
