@@ -158,6 +158,7 @@ func Copy(ctx context.Context, cw Writer, or io.Reader, size int64, expected dig
 		return fmt.Errorf("failed to get status: %w", err)
 	}
 	r := or
+	// 断点续传
 	if ws.Offset > 0 {
 		r, err = seekReader(or, ws.Offset, size)
 		if err != nil {
@@ -169,6 +170,7 @@ func Copy(ctx context.Context, cw Writer, or io.Reader, size int64, expected dig
 		if i >= 1 {
 			log.G(ctx).WithField("digest", expected).Debugf("retrying copy due to reset")
 		}
+		// 数据拷贝
 		copied, err := copyWithBuffer(cw, r)
 		if errors.Is(err, ErrReset) {
 			ws, err := cw.Status()
@@ -188,6 +190,8 @@ func Copy(ctx context.Context, cw Writer, or io.Reader, size int64, expected dig
 			// Short writes would return its own error, this indicates a read failure
 			return fmt.Errorf("failed to read expected number of bytes: %w", io.ErrUnexpectedEOF)
 		}
+		// Commit动作会把/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录重命名为
+		// /var/lib/containerd/io.containerd.content.v1.content/blob/<digest>目录
 		if err := cw.Commit(ctx, size, expected, opts...); err != nil {
 			if errors.Is(err, ErrReset) {
 				ws, err := cw.Status()

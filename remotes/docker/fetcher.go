@@ -53,6 +53,7 @@ func (r dockerFetcher) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.R
 
 	return newHTTPReadSeeker(desc.Size, func(offset int64) (io.ReadCloser, error) {
 		// firstly try fetch via external urls
+		// URLs一般都是空的
 		for _, us := range desc.URLs {
 			u, err := url.Parse(us)
 			if err != nil {

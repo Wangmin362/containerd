@@ -249,10 +249,11 @@ func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, lim
 		}
 
 		handlers := append(rCtx.BaseHandlers, // baseHandlers没干啥，仅仅添加了可视化的进度条任务
-			// 拉取config文件
+			// 拉取镜像的manifest信息，并保存在blob当中。
+			// 请求类似：https://k8s.m.daocloud.io/v2/sig-storage/csi-provisioner/manifests/v3.5.0?ns=registry.k8s.io
 			remotes.FetchHandler(store, fetcher),
 			convertibleHandler,
-			// TODO 拉取镜像
+			// 1、解析上一步拉取的manifest信息，获取当前镜像的所有镜像层，以及每个镜像层的摘要。这里称每个镜像层为children
 			childrenHandler,
 			appendDistSrcLabelHandler,
 		)
@@ -273,6 +274,7 @@ func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, lim
 	}
 
 	// 递归拉取镜像，实际上真真拉取镜像的代码，被包装到了handler当中
+	// TODO 这里的递归下载镜像层的代码，确实写的很牛逼，应当好好吸收消化
 	if err := images.Dispatch(ctx, handler, limiter, desc); err != nil {
 		return images.Image{}, err
 	}

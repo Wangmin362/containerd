@@ -197,7 +197,7 @@ func Dispatch(ctx context.Context, handler Handler, limiter *semaphore.Weighted,
 //
 // One can also replace this with another implementation to allow descending of
 // arbitrary types.
-// 用于从Manifest文件或者Index文件中读取当前镜像的镜像层信息
+// 用于从镜像层中获取子镜像层，只有当解析到manifest文件才有可能返回子镜像层，其它类型的文件不会有子镜像层
 func ChildrenHandler(provider content.Provider) HandlerFunc {
 	return func(ctx context.Context, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
 		// 1、一个ocispec.Descriptor实际上就是一个镜像层
@@ -219,7 +219,7 @@ func SetChildrenLabels(manager content.Manager, f HandlerFunc) HandlerFunc {
 // The label map allows the caller to control the labels per child descriptor.
 // For returned labels, the index of the child will be appended to the end
 // except for the first index when the returned label does not end with '.'.
-// 用于给镜像层增加新的标签
+// 用于给镜像层增加新的标签，这里添加的标签主要是用于垃圾收集
 func SetChildrenMappedLabels(manager content.Manager, f HandlerFunc, labelMap func(ocispec.Descriptor) []string) HandlerFunc {
 	if labelMap == nil {
 		// TODO 这里增加标签的意义何在？ 似乎是为了将来的垃圾回收
@@ -267,6 +267,7 @@ func SetChildrenMappedLabels(manager content.Manager, f HandlerFunc, labelMap fu
 
 // FilterPlatforms is a handler wrapper which limits the descriptors returned
 // based on matching the specified platform matcher.
+// 从Manifest文件中，获取到当前镜像所支持的的平台的镜像摘要。
 func FilterPlatforms(f HandlerFunc, m platforms.Matcher) HandlerFunc {
 	return func(ctx context.Context, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
 		children, err := f(ctx, desc)

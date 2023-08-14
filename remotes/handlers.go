@@ -89,6 +89,9 @@ func MakeRefKey(ctx context.Context, desc ocispec.Descriptor) string {
 // FetchHandler returns a handler that will fetch all content into the ingester
 // discovered in a call to Dispatch. Use with ChildrenHandler to do a full
 // recursive fetch.
+// 1、FetchHandler用于拉取镜像的每一层，包括manifest, index, config文件
+// 2、此函数，每调用一次只会下载一层镜像，所以想要下载整个镜像，肯定是需要调用方多次调用的
+// 3、Fetch会执行真正的镜像层下载，并且会把下载好的镜像层放到/var/lib/containerd/io.containerd.content.v1.content/blob/<digest>当中
 func FetchHandler(ingester content.Ingester, fetcher Fetcher) images.HandlerFunc {
 	return func(ctx context.Context, desc ocispec.Descriptor) (subdescs []ocispec.Descriptor, err error) {
 		ctx = log.WithLogger(ctx, log.G(ctx).WithFields(log.Fields{
@@ -102,7 +105,8 @@ func FetchHandler(ingester content.Ingester, fetcher Fetcher) images.HandlerFunc
 		case images.MediaTypeDockerSchema1Manifest:
 			return nil, fmt.Errorf("%v not supported", desc.MediaType)
 		default:
-			// 拉取镜像层
+			// 拉取镜像的manifest文件信息
+			// 请求类似：https://k8s.m.daocloud.io/v2/sig-storage/csi-provisioner/manifests/v3.5.0?ns=registry.k8s.io
 			err := Fetch(ctx, ingester, fetcher, desc)
 			if errdefs.IsAlreadyExists(err) {
 				return nil, nil
@@ -157,7 +161,9 @@ func Fetch(ctx context.Context, ingester content.Ingester, fetcher Fetcher, desc
 	}
 	defer rc.Close()
 
-	// 把从镜像仓库拉取到的数据写入到/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录当中
+	// 1、把从镜像仓库拉取到的数据写入到/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录当中
+	// 2、同时，如果数据写入完成，对比摘要没有错误，会进行Commit动作，此动作会把/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录
+	// 重命名为/var/lib/containerd/io.containerd.content.v1.content/blob/<digest>目录
 	return content.Copy(ctx, cw, rc, desc.Size, desc.Digest)
 }
 
