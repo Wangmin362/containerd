@@ -101,6 +101,7 @@ func (r dockerFetcher) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.R
 
 			var firstErr error
 			for _, host := range r.hosts {
+				// /v2/sig-storage/csi-provisioner/manifests/sha256:d078dc174323407e8cc6f0f9abd4efaac5db27838f1564d0253d5e3233e3f17f
 				req := r.request(host, http.MethodGet, "manifests", desc.Digest.String())
 				if err := req.addNamespace(r.refspec.Hostname()); err != nil {
 					return nil, err

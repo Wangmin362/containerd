@@ -63,8 +63,8 @@ EOF
 // hostConfig实际上可以理解为/etc/containerd/certs.d/<repository>配置
 type hostConfig struct {
 	scheme string // http还是https
-	host   string // host域名
-	path   string // URL
+	host   string // host域名,也就是镜像仓库域名
+	path   string // 一般都是/v2
 
 	// 镜像仓库支持的能力
 	capabilities docker.HostCapabilities
@@ -281,6 +281,7 @@ func ConfigureHosts(ctx context.Context, options HostOptions) docker.RegistryHos
 // 这个函数的作用就是在/etc/containerd/certs.d目录中找到参数host域名的仓库配置
 func HostDirFromRoot(root string) func(string) (string, error) {
 	// root参数一般设置为：/etc/containerd/certs.d目录
+	// host实际上就是镜像域名
 	return func(host string) (string, error) {
 		// 1、用于获取/etc/containerd/certs.d目录中配置的仓库
 		// 2、从这里可以看出，仓库的使用是有顺序的，先使用不带端口的，然后使用带端口的，最后使用/etc/containerd/certs.d/_default配置

@@ -56,6 +56,7 @@ var (
 	// contain large annotations or be non-images. A proper manifest
 	// design puts large metadata in subobjects, as is consistent the
 	// intent of the manifest design.
+	// TODO 为啥这里需要限制Manifest的大小?
 	MaxManifestSize int64 = 4 * 1048 * 1048
 )
 
@@ -298,7 +299,9 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 			// 1、向镜像仓库发出HEAD请求，拉取manifests
 			// 发出类似https://registry-1.docker.io/v2/library/redis/manifests/6.2.13-alpine的请求
 			// 或者：https://k8s.m.daocloud.io/v2/sig-storage/csi-provisioner/manifests/v3.5.0?ns=registry.k8s.io
+			// 请求的Path为：/v2/sig-storage/csi-provisioner/manifests/v3.5.0
 			req := base.request(host, http.MethodHead, u...)
+			// 请求的Path为：/v2/sig-storage/csi-provisioner/manifests/v3.5.0?ns=registry.k8s.io
 			if err := req.addNamespace(base.refspec.Hostname()); err != nil {
 				return "", ocispec.Descriptor{}, err
 			}
@@ -338,7 +341,7 @@ func (r *dockerResolver) Resolve(ctx context.Context, ref string) (string, ocisp
 				}
 				return "", ocispec.Descriptor{}, remoteerrors.NewUnexpectedStatusErr(resp)
 			}
-			// 响应值的大小， TODO 对于Head请求，这里的size肯定是等于0的
+			// 实际上，这里的大小指的是manifest的大小，后面下载manifest的时候，其文件大小就是这里的值。
 			size := resp.ContentLength
 			// 获取镜像仓库的响应MediaType
 			contentType := getManifestMediaType(resp)
@@ -477,6 +480,7 @@ type dockerBase struct {
 	// 当前要下载的镜像，被解析为了两个部分，Locator为取出tag以及摘要的前半段，而Object则为tag或者摘要
 	refspec reference.Spec
 	// 仓库位置，为reference.Spec.Locator去除host的剩下部分
+	// 譬如对于registry.k8s.io/sig-storage/csi-provisioner:v3.5.0镜像来说，repository就是：sig-storage/csi-provisioner
 	repository string
 	// 下载当前镜像可以使用的镜像仓库
 	hosts []RegistryHost
@@ -519,6 +523,7 @@ func (r *dockerBase) request(host RegistryHost, method string, ps ...string) *re
 	for key, value := range host.Header {
 		header[key] = append(header[key], value...)
 	}
+	// 这里拼接出来的路径为：/v2/sig-storage/csi-provisioner/manifests/v3.5.0
 	parts := append([]string{"/", host.Path, r.repository}, ps...)
 	p := path.Join(parts...)
 	// Join strips trailing slash, re-add ending "/" if included
@@ -549,7 +554,7 @@ func (r *request) addNamespace(ns string) (err error) {
 		return nil
 	}
 	var q url.Values
-	// Parse query
+	// Parse query，如果已经有?了，那么直接添加参数
 	if i := strings.IndexByte(r.path, '?'); i > 0 {
 		r.path = r.path[:i+1]
 		q, err = url.ParseQuery(r.path[i+1:])

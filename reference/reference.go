@@ -64,6 +64,7 @@ type Spec struct {
 	// Typically, the locator may used to resolve the remote to fetch specific
 	// resources.
 	// 镜像名，但是没有tag,也没有摘要
+	// 譬如对于registry.k8s.io/sig-storage/csi-provisioner:v3.5.0俩说，Locator就是registry.k8s.io/sig-storage/csi-provisioner
 	Locator string
 
 	// Object contains the identifier for the remote resource. Classically,
@@ -79,7 +80,8 @@ type Spec struct {
 	//
 	// We define the tag to be anything except '@' and ':'. <digest spec> may
 	// be a full valid digest or shortened version, possibly with elided
-	// algorithm.
+	// algorithm
+	//  Tag或者摘要，譬如：registry.k8s.io/sig-storage/csi-provisioner:v3.5.0，Object就是：v3.5.0
 	Object string
 }
 

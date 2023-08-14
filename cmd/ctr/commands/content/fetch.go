@@ -189,7 +189,7 @@ func Fetch(ctx context.Context, client *containerd.Client, ref string, config *F
 		close(progress)
 	}()
 
-	// 用于添加镜像层的任务下载
+	// 用于添加镜像层的任务下载，其实就是BaseHandlers
 	h := images.HandlerFunc(func(ctx context.Context, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
 		if desc.MediaType != images.MediaTypeDockerSchema1Manifest {
 			ongoing.Add(desc)
