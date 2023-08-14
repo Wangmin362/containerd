@@ -404,6 +404,7 @@ func defaultRemoteContext() *RemoteContext {
 // Fetch downloads the provided content into containerd's content store
 // and returns a non-platform specific image reference
 func (c *Client) Fetch(ctx context.Context, ref string, opts ...RemoteOpt) (images.Image, error) {
+	// 实例化一个空的RemoteContext，然后利用opts来初始化值
 	fetchCtx := defaultRemoteContext()
 	for _, o := range opts {
 		if err := o(c, fetchCtx); err != nil {

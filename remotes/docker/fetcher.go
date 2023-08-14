@@ -106,6 +106,7 @@ func (r dockerFetcher) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.R
 					return nil, err
 				}
 
+				// 向镜像仓库发送请求
 				rc, err := r.open(ctx, req, desc.MediaType, offset)
 				if err != nil {
 					// Store the error for referencing later

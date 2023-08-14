@@ -177,12 +177,15 @@ func (c *Client) fetch(ctx context.Context, rCtx *RemoteContext, ref string, lim
 	defer span.End()
 	// 内容服务，用于保存镜像到/var/lib/containerd/io.containerd.content.v1.content/blobs当中
 	store := c.ContentStore()
-	// 根据镜像名获取镜像的描述信息，主要是摘要数据
+	// 1、根据镜像名获取镜像的描述信息，主要是摘要数据
+	// 2、原理就是会向镜像仓库发送：https://k8s.m.daocloud.io/v2/sig-storage/csi-provisioner/manifests/v3.5.0?ns=registry.k8s.io请求
+	// 并从响应头中获取镜像摘要信息
 	name, desc, err := rCtx.Resolver.Resolve(ctx, ref)
 	if err != nil {
 		return images.Image{}, fmt.Errorf("failed to resolve reference %q: %w", ref, err)
 	}
 
+	// 获取fetcher，这里的fetcher实际上是一个函数，用于延迟拉取镜像
 	fetcher, err := rCtx.Resolver.Fetcher(ctx, name)
 	if err != nil {
 		return images.Image{}, fmt.Errorf("failed to get fetcher for %q: %w", name, err)

@@ -60,6 +60,9 @@ type Resolver interface {
 // A fetcher implementation may implement the FetcherByDigest interface too.
 type Fetcher interface {
 	// Fetch the resource identified by the descriptor.
+	// 1、根据镜像层描述信息，拉取镜像层。
+	// 2、这里的返回值很有意思，Fetch函数并不会真正拉取数据，而是要等到用户调用io.ReadCloser的Read接口时才会拉取镜像数据。
+	// 这种延迟执行的写法非常值得学习
 	Fetch(ctx context.Context, desc ocispec.Descriptor) (io.ReadCloser, error)
 }
 

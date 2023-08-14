@@ -28,7 +28,9 @@ import (
 const maxRetry = 3
 
 type httpReadSeeker struct {
-	size   int64
+	// 当前要下载的镜像层的大小
+	size int64
+	// 数据下载偏移量
 	offset int64
 	rc     io.ReadCloser
 	open   func(offset int64) (io.ReadCloser, error)
@@ -39,7 +41,9 @@ type httpReadSeeker struct {
 
 func newHTTPReadSeeker(size int64, open func(offset int64) (io.ReadCloser, error)) (io.ReadCloser, error) {
 	return &httpReadSeeker{
+		// 镜像层的大小
 		size: size,
+		// 这里并非打开文件，而是打开IO流，和镜像仓库之间的IO流。
 		open: open,
 	}, nil
 }
@@ -143,11 +147,13 @@ func (hrs *httpReadSeeker) reader() (io.Reader, error) {
 			return nil, fmt.Errorf("cannot open: %w", errdefs.ErrNotImplemented)
 		}
 
+		// 获取readCloser
 		rc, err := hrs.open(hrs.offset)
 		if err != nil {
 			return nil, fmt.Errorf("httpReadSeeker: failed open: %w", err)
 		}
 
+		// 需要先把以前的IO流关闭
 		if hrs.rc != nil {
 			if err := hrs.rc.Close(); err != nil {
 				log.L.WithError(err).Error("httpReadSeeker: failed to close ReadCloser")
@@ -160,7 +166,7 @@ func (hrs *httpReadSeeker) reader() (io.Reader, error) {
 		// sought (?). In that case, we should err on committing the content,
 		// as the length is already satisfied but we just return the empty
 		// reader instead.
-
+		// TODO 处理offset=size的情况
 		hrs.rc = io.NopCloser(bytes.NewReader([]byte{}))
 	}
 
