@@ -126,6 +126,8 @@ func (r dockerFetcher) Fetch(ctx context.Context, desc ocispec.Descriptor) (io.R
 
 		// Finally use blobs endpoints
 		var firstErr error
+		// 如果当前镜像层的MediaType不是Manifest或者ManifestList，那么将使用bolbs的方式下载镜像
+		// 譬如：https://k8s.m.daocloud.io/v2/sig-storage/csi-provisioner/blobs/sha256:5627a970d25e752d971a501ec7e35d0d6fdcd4a3ce9e958715a686853024794a?ns=registry.k8s.io
 		for _, host := range r.hosts {
 			req := r.request(host, http.MethodGet, "blobs", desc.Digest.String())
 			if err := req.addNamespace(r.refspec.Hostname()); err != nil {
