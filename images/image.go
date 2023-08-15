@@ -50,6 +50,7 @@ type Image struct {
 
 	// Target describes the root content for this image. Typically, this is
 	// a manifest, index or manifest list.
+	// 所谓的Target，其实就是Manifest或者Image Index文件，通过Target可以找到镜像的完整数据
 	Target ocispec.Descriptor
 
 	CreatedAt, UpdatedAt time.Time
@@ -93,7 +94,9 @@ type Store interface {
 //
 // The caller can then use the descriptor to resolve and process the
 // configuration of the image.
+// 读取镜像的Config文件，该文件的描述符从Manifest中获取
 func (image *Image) Config(ctx context.Context, provider content.Provider, platform platforms.MatchComparer) (ocispec.Descriptor, error) {
+	// 读取镜像的Config文件，该文件的描述符从Manifest中获取
 	return Config(ctx, provider, image.Target, platform)
 }
 
@@ -101,11 +104,18 @@ func (image *Image) Config(ctx context.Context, provider content.Provider, platf
 //
 // These are used to verify that a set of layers unpacked to the expected
 // values.
+// 获取镜像的RootFs.DiffID，原理如下：
+// 1、根据镜像层的摘要信息读取Manifest
+// 2、从Manifest获取Config的Digest
+// 3、根据获取到的Config.Digest读取Config文件
+// 4、获取RootFS.DiffIDs
 func (image *Image) RootFS(ctx context.Context, provider content.Provider, platform platforms.MatchComparer) ([]digest.Digest, error) {
+	// 读取镜像的Config文件，该文件的描述符从Manifest中获取
 	desc, err := image.Config(ctx, provider, platform)
 	if err != nil {
 		return nil, err
 	}
+	// 从镜像的Config文件中获取DiffID
 	return RootFS(ctx, provider, desc)
 }
 
@@ -139,6 +149,7 @@ type platformManifest struct {
 // package by returning a specific manifest type. We'll need to refactor this
 // to return a manifest descriptor or decide that we want to bring the API in
 // this direction because this abstraction is not needed.
+// 读取镜像的Manifest，读取位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 func Manifest(ctx context.Context, provider content.Provider, image ocispec.Descriptor, platform platforms.MatchComparer) (ocispec.Manifest, error) {
 	var (
 		limit    = 1
@@ -146,14 +157,18 @@ func Manifest(ctx context.Context, provider content.Provider, image ocispec.Desc
 		wasIndex bool
 	)
 
+	// TODO 这里的递归遍历的写法也很值得学习
 	if err := Walk(ctx, HandlerFunc(func(ctx context.Context, desc ocispec.Descriptor) ([]ocispec.Descriptor, error) {
 		switch desc.MediaType {
+		// 如果当前文件是Manifest文件，那么此文件将会包含镜像的Config以及Layer
 		case MediaTypeDockerSchema2Manifest, ocispec.MediaTypeImageManifest:
+			// 当前镜像层保存位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 			p, err := content.ReadBlob(ctx, provider, desc)
 			if err != nil {
 				return nil, err
 			}
 
+			// 校验当前的MediaType,如果MediaType不对，那么反序列化必然失败
 			if err := validateMediaType(p, desc.MediaType); err != nil {
 				return nil, fmt.Errorf("manifest: invalid desc %s: %w", desc.Digest, err)
 			}
@@ -169,6 +184,7 @@ func Manifest(ctx context.Context, provider content.Provider, image ocispec.Desc
 				}
 
 				if desc.Platform == nil {
+					// 如果镜像的config文件
 					p, err := content.ReadBlob(ctx, provider, manifest.Config)
 					if err != nil {
 						return nil, err
@@ -192,25 +208,31 @@ func Manifest(ctx context.Context, provider content.Provider, image ocispec.Desc
 			})
 
 			return nil, nil
+		// 如果当前镜像层是image index文件，在Docker中被称为ManifestList，该文件用于支持镜像的多平台
 		case MediaTypeDockerSchema2ManifestList, ocispec.MediaTypeImageIndex:
+			// 当前镜像层保存位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 			p, err := content.ReadBlob(ctx, provider, desc)
 			if err != nil {
 				return nil, err
 			}
 
+			// 校验媒体类型，如果媒体类型不对，那么反序列化必然失败
 			if err := validateMediaType(p, desc.MediaType); err != nil {
 				return nil, fmt.Errorf("manifest: invalid desc %s: %w", desc.Digest, err)
 			}
 
 			var idx ocispec.Index
+			// 反序列化
 			if err := json.Unmarshal(p, &idx); err != nil {
 				return nil, err
 			}
 
+			// 没有指定平台的话，就返回所有平台的镜像
 			if platform == nil {
 				return idx.Manifests, nil
 			}
 
+			// 否则返回满足当前平台的镜像层摘要，实际上这个镜像层被称为manifest
 			var descs []ocispec.Descriptor
 			for _, d := range idx.Manifests {
 				if d.Platform == nil || platform.Match(*d.Platform) {
@@ -255,7 +277,9 @@ func Manifest(ctx context.Context, provider content.Provider, image ocispec.Desc
 //
 // The caller can then use the descriptor to resolve and process the
 // configuration of the image.
+// 读取镜像的Config文件，该文件的描述符从Manifest中获取
 func Config(ctx context.Context, provider content.Provider, image ocispec.Descriptor, platform platforms.MatchComparer) (ocispec.Descriptor, error) {
+	// 读取镜像的Manifest
 	manifest, err := Manifest(ctx, provider, image, platform)
 	if err != nil {
 		return ocispec.Descriptor{}, err
@@ -436,11 +460,16 @@ func validateMediaType(b []byte, mt string) error {
 //
 // These are used to verify that a set of layers unpacked to the expected
 // values.
+// 从镜像的Config文件中获取DiffID
 func RootFS(ctx context.Context, provider content.Provider, configDesc ocispec.Descriptor) ([]digest.Digest, error) {
+	// 读取/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>文件
+	// 实际上这里读取的就是镜像的config信息
 	p, err := content.ReadBlob(ctx, provider, configDesc)
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO 既然其它地方都做了MediaType校验，那么这里是不是也应该做校验，不然反序列化必然有问题
 
 	var config ocispec.Image
 	if err := json.Unmarshal(p, &config); err != nil {

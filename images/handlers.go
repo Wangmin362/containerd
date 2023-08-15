@@ -93,6 +93,7 @@ func Handlers(handlers ...Handler) HandlerFunc {
 func Walk(ctx context.Context, handler Handler, descs ...ocispec.Descriptor) error {
 	for _, desc := range descs {
 
+		// 如果当前文件时manifest文件，那么此文件将会返回layer，也就是所谓的children
 		children, err := handler.Handle(ctx, desc)
 		if err != nil {
 			if errors.Is(err, ErrSkipDesc) {

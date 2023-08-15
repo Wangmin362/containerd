@@ -56,6 +56,7 @@ type ReaderAt interface {
 
 // Provider provides a reader interface for specific content
 // 此接口可以用于读取某镜像层（通过摘要）数据，并且可以指定偏移量
+// 读取路径为：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 type Provider interface {
 	// ReaderAt only requires desc.Digest to be set.
 	// Other fields in the descriptor may be used internally for resolving

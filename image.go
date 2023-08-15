@@ -41,33 +41,41 @@ import (
 
 // Image describes an image used by containers
 type Image interface {
-	// Name of the image
+	// Name of the image 镜像的名字
 	Name() string
-	// Target descriptor for the image content
+	// Target descriptor for the image content 所谓的Target,其实指的是镜像的Manifest或者ImageIndex文件
 	Target() ocispec.Descriptor
-	// Labels of the image
+	// Labels of the image 镜像标签
 	Labels() map[string]string
 	// Unpack unpacks the image's content into a snapshot
 	// 所谓的unpack，实际上就是把就像数据解压为快照
 	Unpack(context.Context, string, ...UnpackOpt) error
 	// RootFS returns the unpacked diffids that make up images rootfs.
+	// 获取镜像的RootFs.DiffID，原理如下：
+	// 1、根据镜像层的摘要信息读取Manifest
+	// 2、从Manifest获取Config的Digest
+	// 3、根据获取到的Config.Digest读取Config文件
+	// 4、获取RootFS.DiffIDs
 	RootFS(ctx context.Context) ([]digest.Digest, error)
-	// Size returns the total size of the image's packed resources.
+	// Size returns the total size of the image's packed resources.  返回镜像为解压缩的大小
 	Size(ctx context.Context) (int64, error)
 	// Usage returns a usage calculation for the image.
 	Usage(context.Context, ...UsageOpt) (int64, error)
 	// Config descriptor for the image.
+	// 读取镜像的Config文件，该文件的描述符从Manifest中获取
 	Config(ctx context.Context) (ocispec.Descriptor, error)
 	// IsUnpacked returns whether or not an image is unpacked.
 	// TODO 这个接口有啥用？
 	IsUnpacked(context.Context, string) (bool, error)
 	// ContentStore provides a content store which contains image blob data
 	ContentStore() content.Store
-	// Metadata returns the underlying image metadata
+	// Metadata returns the underlying image metadata 其实就是镜像数据
 	Metadata() images.Image
 	// Platform returns the platform match comparer. Can be nil.
+	// 平台比较器，用于比较平台
 	Platform() platforms.MatchComparer
 	// Spec returns the OCI image spec for a given image.
+	// 读取镜像的Config文件
 	Spec(ctx context.Context) (ocispec.Image, error)
 }
 
@@ -157,7 +165,13 @@ func (i *image) Labels() map[string]string {
 	return i.i.Labels
 }
 
+// RootFS 获取镜像的RootFs.DiffID，原理如下：
+// 1、根据镜像层的摘要信息读取Manifest
+// 2、从Manifest获取Config的Digest
+// 3、根据获取到的Config.Digest读取Config文件
+// 4、获取RootFS.DiffIDs
 func (i *image) RootFS(ctx context.Context) ([]digest.Digest, error) {
+	// 内容服务，该服务直接读写/var/lib/containerd/io.containerd.content.v1.content
 	provider := i.client.ContentStore()
 	return i.i.RootFS(ctx, provider, i.platform)
 }
@@ -256,11 +270,13 @@ func (i *image) Usage(ctx context.Context, opts ...UsageOpt) (int64, error) {
 	return size, nil
 }
 
+// Config 读取镜像的Config文件，该文件的描述符从Manifest中获取
 func (i *image) Config(ctx context.Context) (ocispec.Descriptor, error) {
 	provider := i.client.ContentStore()
 	return i.i.Config(ctx, provider, i.platform)
 }
 
+// IsUnpacked TODO 如何理解这个方法？
 func (i *image) IsUnpacked(ctx context.Context, snapshotterName string) (bool, error) {
 	sn, err := i.client.getSnapshotter(ctx, snapshotterName)
 	if err != nil {
@@ -284,19 +300,23 @@ func (i *image) IsUnpacked(ctx context.Context, snapshotterName string) (bool, e
 	return false, nil
 }
 
+// Spec 读取镜像的Config文件
 func (i *image) Spec(ctx context.Context) (ocispec.Image, error) {
 	var ociImage ocispec.Image
 
+	// Config 读取镜像的Config的描述符（其实主要是为了获取摘要），该文件的描述符从Manifest中获取
 	desc, err := i.Config(ctx)
 	if err != nil {
 		return ociImage, fmt.Errorf("get image config descriptor: %w", err)
 	}
 
+	// 读取/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	blob, err := content.ReadBlob(ctx, i.ContentStore(), desc)
 	if err != nil {
 		return ociImage, fmt.Errorf("read image config from content store: %w", err)
 	}
 
+	// 反序列化
 	if err := json.Unmarshal(blob, &ociImage); err != nil {
 		return ociImage, fmt.Errorf("unmarshal image config %s: %w", blob, err)
 	}
@@ -305,7 +325,7 @@ func (i *image) Spec(ctx context.Context) (ocispec.Image, error) {
 }
 
 // UnpackConfig provides configuration for the unpack of an image
-// 镜像解压配置
+// TODO 如何理解镜像解压配置
 type UnpackConfig struct {
 	// ApplyOpts for applying a diff to a snapshotter
 	ApplyOpts []diff.ApplyOpt
@@ -355,7 +375,7 @@ func (i *image) Unpack(ctx context.Context, snapshotterName string, opts ...Unpa
 		}
 	}
 
-	// 1、获取manifest文件，实际上是直接读取的/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
+	// 读取镜像的Manifest，读取位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	manifest, err := i.getManifest(ctx, i.platform)
 	if err != nil {
 		return err
@@ -374,15 +394,18 @@ func (i *image) Unpack(ctx context.Context, snapshotterName string, opts ...Unpa
 		chain    []digest.Digest
 		unpacked bool
 	)
+	// 获取快照插件的名字
 	snapshotterName, err = i.client.resolveSnapshotterName(ctx, snapshotterName)
 	if err != nil {
 		return err
 	}
+	// 获取快照插件
 	sn, err := i.client.getSnapshotter(ctx, snapshotterName)
 	if err != nil {
 		return err
 	}
 	if config.CheckPlatformSupported {
+		// 校验当前快照其是否支持当前系统
 		if err := i.checkSnapshotterSupport(ctx, snapshotterName, manifest); err != nil {
 			return err
 		}
@@ -429,8 +452,10 @@ func (i *image) Unpack(ctx context.Context, snapshotterName string, opts ...Unpa
 	return err
 }
 
+// 读取镜像的Manifest，读取位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 func (i *image) getManifest(ctx context.Context, platform platforms.MatchComparer) (ocispec.Manifest, error) {
 	cs := i.ContentStore()
+	// 读取镜像的Manifest，读取位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	manifest, err := images.Manifest(ctx, cs, i.i.Target, platform)
 	if err != nil {
 		return ocispec.Manifest{}, err
@@ -440,6 +465,11 @@ func (i *image) getManifest(ctx context.Context, platform platforms.MatchCompare
 
 func (i *image) getLayers(ctx context.Context, platform platforms.MatchComparer, manifest ocispec.Manifest) ([]rootfs.Layer, error) {
 	cs := i.ContentStore()
+	// 获取镜像的RootFs.DiffID，原理如下：
+	// 1、根据镜像层的摘要信息读取Manifest
+	// 2、从Manifest获取Config的Digest
+	// 3、根据获取到的Config.Digest读取Config文件
+	// 4、获取RootFS.DiffIDs
 	diffIDs, err := i.i.RootFS(ctx, cs, platform)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve rootfs: %w", err)

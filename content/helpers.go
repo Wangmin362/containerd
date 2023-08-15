@@ -59,7 +59,7 @@ func NewReader(ra ReaderAt) io.Reader {
 //
 // Avoid using this for large blobs, such as layers.
 // 如果镜像描述符中携带了镜像数据，那么直接返回，如果没有，那么直接从磁盘当中读取镜像信息。
-// 读取的目录位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs
+// 读取的目录位置为：/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 func ReadBlob(ctx context.Context, provider Provider, desc ocispec.Descriptor) ([]byte, error) {
 	// TODO 这里应该说的是镜像描述符中就自带了镜像数据，因此不需要读取本地磁盘文件缓存的数据，直接返回即可
 	if int64(len(desc.Data)) == desc.Size && digest.FromBytes(desc.Data) == desc.Digest {
