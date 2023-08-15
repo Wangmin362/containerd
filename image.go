@@ -355,11 +355,13 @@ func (i *image) Unpack(ctx context.Context, snapshotterName string, opts ...Unpa
 		}
 	}
 
+	// 1、获取manifest文件，实际上是直接读取的/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 	manifest, err := i.getManifest(ctx, i.platform)
 	if err != nil {
 		return err
 	}
 
+	// 通过manifest文件获取镜像的层
 	layers, err := i.getLayers(ctx, i.platform, manifest)
 	if err != nil {
 		return err

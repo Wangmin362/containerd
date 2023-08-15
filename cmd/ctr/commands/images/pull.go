@@ -156,6 +156,10 @@ command. As part of this process, we do the following:
 		}
 
 		// 所谓的Fetch，实际上就是镜像拉取，主要过程如下：
+		// 1、拉取image index文件，在docker标准中被称为manifest list，这个文件用于支持镜像支持不同的平台
+		// 2、拉取manifest文件，manifest文件中主要包含两个非常重要的东西，其一是config，其二是layer
+		// 3、解析manifest文件，拉取config文件以及各个layer
+		// 4、上述描述中的image index, manifest, config, layers都拉取完成之后，意味着整个镜像也就拉取完成
 		img, err := content.Fetch(ctx, client, ref, config)
 		if err != nil {
 			return err
@@ -189,6 +193,7 @@ command. As part of this process, we do the following:
 		for _, platform := range p {
 			fmt.Printf("unpacking %s %s...\n", platforms.Format(platform), img.Target.Digest)
 			i := containerd.NewImageWithPlatform(client, img, platforms.Only(platform))
+			// 使用当前配置的快照插件解压镜像
 			err = i.Unpack(ctx, context.String("snapshotter"))
 			if err != nil {
 				return err

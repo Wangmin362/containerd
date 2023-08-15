@@ -89,6 +89,7 @@ func Handlers(handlers ...Handler) HandlerFunc {
 //
 // This differs from dispatch in that each sibling resource is considered
 // synchronously.
+// 遍历文件描述符，文件描述符可以描述image index, manifest, config文件
 func Walk(ctx context.Context, handler Handler, descs ...ocispec.Descriptor) error {
 	for _, desc := range descs {
 
