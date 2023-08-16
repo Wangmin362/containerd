@@ -37,6 +37,7 @@ import (
 // include the descriptor for the uncompressed tar diff as well as a blob
 // used to transport that tar. The blob descriptor may or may not describe
 // a compressed object.
+// TODO 所谓的diff_id，其实就是镜像层未压缩之前的摘要
 type Layer struct {
 	Diff ocispec.Descriptor
 	Blob ocispec.Descriptor

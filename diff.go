@@ -33,6 +33,7 @@ import (
 )
 
 // DiffService handles the computation and application of diffs
+// TODO 如何理解Diff接口？
 type DiffService interface {
 	diff.Comparer
 	diff.Applier

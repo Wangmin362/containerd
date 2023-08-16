@@ -30,6 +30,7 @@ var tempMountLocation = getTempDir()
 // The mounts are valid during the call to the f.
 // Finally we will unmount and remove the temp dir regardless of the result of f.
 func WithTempMount(ctx context.Context, mounts []Mount, f func(root string) error) (err error) {
+	// 创建临时目录
 	root, uerr := os.MkdirTemp(tempMountLocation, "containerd-mount")
 	if uerr != nil {
 		return fmt.Errorf("failed to create temp dir: %w", uerr)
@@ -42,6 +43,7 @@ func WithTempMount(ctx context.Context, mounts []Mount, f func(root string) erro
 	// from the mounted dir.
 	// For details, please refer to #1868 #1785.
 	defer func() {
+		// 结束之后，必须移除目录；但是如果此目录umount失败，那么目录中就会有真实的数据，所以没有使用RemoveAll方法
 		if uerr = os.Remove(root); uerr != nil {
 			log.G(ctx).WithError(uerr).WithField("dir", root).Error("failed to remove mount temp dir")
 		}
@@ -49,6 +51,7 @@ func WithTempMount(ctx context.Context, mounts []Mount, f func(root string) erro
 
 	// We should do defer first, if not we will not do Unmount when only a part of Mounts are failed.
 	defer func() {
+		// 卸载
 		if uerr = UnmountMounts(mounts, root, 0); uerr != nil {
 			uerr = fmt.Errorf("failed to unmount %s: %w", root, uerr)
 			if err == nil {
