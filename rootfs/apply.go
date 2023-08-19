@@ -38,8 +38,8 @@ import (
 // used to transport that tar. The blob descriptor may or may not describe
 // a compressed object.
 type Layer struct {
-	Diff ocispec.Descriptor
-	Blob ocispec.Descriptor
+	Diff ocispec.Descriptor // image config中的diff id
+	Blob ocispec.Descriptor // 磁盘中存储的镜像层文件，位置在/var/lib/containerd/io.containerd.content.v1.content/blobs/sha256
 }
 
 // ApplyLayers applies all the layers using the given snapshotter and applier.
@@ -88,8 +88,17 @@ func ApplyLayer(ctx context.Context, layer Layer, chain []digest.Digest, sn snap
 // ApplyLayerWithOpts applies a single layer on top of the given provided layer chain,
 // using the provided snapshotter, applier, and apply opts. If the layer was unpacked true
 // is returned, if the layer already exists false is returned.
+// 1、如果当前镜像层未解压，返回true；如果当前层已经存在，返回false
 func ApplyLayerWithOpts(ctx context.Context, layer Layer, chain []digest.Digest, sn snapshots.Snapshotter, a diff.Applier, opts []snapshots.Opt, applyOpts []diff.ApplyOpt) (bool, error) {
 	var (
+		// chainID的计算方法：
+		/*
+			ChainID(L₀) =  DiffID(L₀)
+			ChainID(L₀|...|Lₙ₋₁|Lₙ) = Digest(ChainID(L₀|...|Lₙ₋₁) + " " + DiffID(Lₙ))
+		*/
+		// 简单来说：ChainID0 = DiffID0  ChainID1 = Digest("ChainID0" + " " + DiffID1)
+		// ChainID2 = Digest("ChainID1" + " " + DiffID1)   ChainID3 = Digest("ChainID2" + " " + DiffID3)
+		// 利用chainID的计算公式计算出当前层的chainID
 		chainID = identity.ChainID(append(chain, layer.Diff.Digest)).String()
 		applied bool
 	)
