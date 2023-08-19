@@ -381,7 +381,7 @@ func (i *image) Unpack(ctx context.Context, snapshotterName string, opts ...Unpa
 		return err
 	}
 
-	// 通过manifest文件获取镜像的层
+	// 通过manifest文件获取镜像层的diff_id
 	layers, err := i.getLayers(ctx, i.platform, manifest)
 	if err != nil {
 		return err
@@ -464,6 +464,7 @@ func (i *image) getManifest(ctx context.Context, platform platforms.MatchCompare
 	return manifest, nil
 }
 
+// 获取镜像层的diff_id
 func (i *image) getLayers(ctx context.Context, platform platforms.MatchComparer, manifest ocispec.Manifest) ([]rootfs.Layer, error) {
 	cs := i.ContentStore()
 	// 获取镜像的RootFs.DiffID，原理如下：
@@ -480,6 +481,7 @@ func (i *image) getLayers(ctx context.Context, platform platforms.MatchComparer,
 	}
 	layers := make([]rootfs.Layer, len(diffIDs))
 	for i := range diffIDs {
+		// 从这里可以看出config中的diff_id和manifest中的layer的位置关系是意义对应的
 		layers[i].Diff = ocispec.Descriptor{
 			// TODO: derive media type from compressed type
 			MediaType: ocispec.MediaTypeImageLayer,

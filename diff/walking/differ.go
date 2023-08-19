@@ -60,6 +60,7 @@ func NewWalkingDiff(store content.Store) diff.Comparer {
 // to the content store.
 func (s *walkingDiff) Compare(ctx context.Context, lower, upper []mount.Mount, opts ...diff.Opt) (d ocispec.Descriptor, err error) {
 	var config diff.Config
+	// 初始化diffConfig
 	for _, opt := range opts {
 		if err := opt(&config); err != nil {
 			return emptyDesc, err

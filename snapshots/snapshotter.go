@@ -263,7 +263,7 @@ type Snapshotter interface {
 	//
 	// Should be used for parent resolution, existence checks and to discern
 	// the kind of snapshot.
-	// 1、key的格式为：default/<index>/<digest>，譬如：default/4/sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
+	// 1、key要么是摘要，要么是镜像名。譬如：sha256:4393f4a23174c8219b87411a6f1d20f7a7b1bcc5cd5ee2a3e8994bfc7095c614
 	// 2、直接从/v1/snapshots/<key>桶中读取inodes, size, kind, parent, createTime, updateTime, labels属性
 	Stat(ctx context.Context, key string) (Info, error)
 

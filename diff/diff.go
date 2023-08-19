@@ -31,6 +31,7 @@ type Config struct {
 	// MediaType is the type of diff to generate
 	// Default depends on the differ,
 	// i.e. application/vnd.oci.image.layer.v1.tar+gzip
+	// 这个参数必须指定，只有制定了媒体类型，压缩器才知道该怎么解压缩该类型的媒体数据
 	MediaType string
 
 	// Reference is the content upload reference
