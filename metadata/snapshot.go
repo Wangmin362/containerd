@@ -60,6 +60,7 @@ func newSnapshotter(db *DB, name string, sn snapshots.Snapshotter) *snapshotter 
 	}
 }
 
+// 返回值为：<namespace>/<id>/<key>，其中的id为boltdb桶的序列号，是一个自增ID
 func createKey(id uint64, namespace, key string) string {
 	return fmt.Sprintf("%s/%d/%s", namespace, id, key)
 }
@@ -306,7 +307,11 @@ func (s *snapshotter) Mounts(ctx context.Context, key string) ([]mount.Mount, er
 	return s.Snapshotter.Mounts(ctx, bkey)
 }
 
+// Prepare sdf
 func (s *snapshotter) Prepare(ctx context.Context, key, parent string, opts ...snapshots.Opt) ([]mount.Mount, error) {
+	// 所谓的创建快照，其实主要做了两件事情：
+	// 一：创建v1/<namespace>/snapshots/<snapshots>桶，并在其中记录元信息
+	// 二：创建/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>目录，并在目录中创建fs, work目录
 	mounts, err := s.createSnapshot(ctx, key, parent, false, opts)
 	if err != nil {
 		return nil, err
@@ -330,6 +335,9 @@ func (s *snapshotter) View(ctx context.Context, key, parent string, opts ...snap
 	return s.createSnapshot(ctx, key, parent, true, opts)
 }
 
+// 所谓的创建快照，其实主要做了两件事情：
+// 一：创建v1/<namespace>/snapshots/<snapshots>桶，并在其中记录元信息
+// 二：创建/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>目录，并在目录中创建fs, work目录
 func (s *snapshotter) createSnapshot(ctx context.Context, key, parent string, readonly bool, opts []snapshots.Opt) ([]mount.Mount, error) {
 	s.l.RLock()
 	defer s.l.RUnlock()
@@ -353,17 +361,18 @@ func (s *snapshotter) createSnapshot(ctx context.Context, key, parent string, re
 	}
 
 	var (
-		target  = base.Labels[labelSnapshotRef]
-		bparent string
-		bkey    string
+		target  = base.Labels[labelSnapshotRef] // 从label中获取containerd.io/snapshot.ref值
+		bparent string                          // 值为：/v1/<namespace>/snapshots/<snapshot>/<parent>桶，key为name的值
+		bkey    string                          // 值为：<namespace>/<sid>/<key> sid为/v1/<namespace>/snapshots/<snapshots>桶的序列号，是一个自增ID
 		bopts   = []snapshots.Opt{
 			snapshots.WithLabels(snapshots.FilterInheritedLabels(base.Labels)),
 		}
 	)
 
 	// 开启写事务
+	// 1、创建/v1/<namespace>/snapshots/<snapshot>/<key>桶，并
 	if err := update(ctx, s.db, func(tx *bolt.Tx) error {
-		// 创建/v1/<namespace>/snapshots/<snapshots-type>桶
+		// 创建/v1/<namespace>/snapshots/<snapshots>桶
 		bkt, err := createSnapshotterBucket(tx, ns, s.name)
 		if err != nil {
 			return err
@@ -377,13 +386,13 @@ func (s *snapshotter) createSnapshot(ctx context.Context, key, parent string, re
 			}
 		}
 
-		// 创建/v1/<namespace>/snapshots/<snapshots-type>/<key>桶
+		// 创建/v1/<namespace>/snapshots/<snapshots>/<key>桶
 		if bbkt := bkt.Bucket([]byte(key)); bbkt != nil {
 			return fmt.Errorf("snapshot %q: %w", key, errdefs.ErrAlreadyExists)
 		}
 
 		if parent != "" {
-			// 获取/v1/<namespace>/snapshots/<snapshots-type>/<parent>桶
+			// 获取/v1/<namespace>/snapshots/<snapshot>/<parent>桶
 			pbkt := bkt.Bucket([]byte(parent))
 			if pbkt == nil {
 				return fmt.Errorf("parent snapshot %v does not exist: %w", parent, errdefs.ErrNotFound)
@@ -392,11 +401,12 @@ func (s *snapshotter) createSnapshot(ctx context.Context, key, parent string, re
 			bparent = string(pbkt.Get(bucketKeyName))
 		}
 
-		// TODO 如何理解这个方法
+		// 获取当前桶的序列化，每获取一次就回加一；有点类似于mysql的自增ID
 		sid, err := bkt.NextSequence()
 		if err != nil {
 			return err
 		}
+		// bkey = <namespace>/<sid>/<key>
 		bkey = createKey(sid, ns, key)
 
 		return err
@@ -409,6 +419,8 @@ func (s *snapshotter) createSnapshot(ctx context.Context, key, parent string, re
 		created string
 		rerr    error
 	)
+	// bkey = <namespace>/<sid>/<key>
+	// bparent为boletdb中记录的当前镜像层的名字
 	if readonly {
 		m, err = s.Snapshotter.View(ctx, bkey, bparent, bopts...)
 	} else {

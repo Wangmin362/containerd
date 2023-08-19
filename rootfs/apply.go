@@ -89,7 +89,7 @@ func ApplyLayer(ctx context.Context, layer Layer, chain []digest.Digest, sn snap
 // ApplyLayerWithOpts applies a single layer on top of the given provided layer chain,
 // using the provided snapshotter, applier, and apply opts. If the layer was unpacked true
 // is returned, if the layer already exists false is returned.
-// 1、如果当前镜像层未解压，返回true；如果当前层已经存在，返回false
+// 1、如果当前镜像层未解压，返回true；如果当前层已经存在，返回false  2、这里的snapshotter其实就是元数据服务
 func ApplyLayerWithOpts(ctx context.Context, layer Layer, chain []digest.Digest, sn snapshots.Snapshotter, a diff.Applier, opts []snapshots.Opt, applyOpts []diff.ApplyOpt) (bool, error) {
 	var (
 		// chainID的计算方法：
@@ -103,6 +103,8 @@ func ApplyLayerWithOpts(ctx context.Context, layer Layer, chain []digest.Digest,
 		chainID = identity.ChainID(append(chain, layer.Diff.Digest)).String()
 		applied bool
 	)
+	// 1、通过metadata服务获取镜像层的元数据信息，数据库为：/var/lib/containerd/io.containerd.metadata.v1.bolt/meta.db
+	// 路径为：/v1/<namespace>/snapshots/<snapshot>/<diff_id>
 	if _, err := sn.Stat(ctx, chainID); err != nil {
 		if !errdefs.IsNotFound(err) {
 			return false, fmt.Errorf("failed to stat snapshot %s: %w", chainID, err)
@@ -122,9 +124,9 @@ func ApplyLayerWithOpts(ctx context.Context, layer Layer, chain []digest.Digest,
 
 func applyLayers(ctx context.Context, layers []Layer, chain []digest.Digest, sn snapshots.Snapshotter, a diff.Applier, opts []snapshots.Opt, applyOpts []diff.ApplyOpt) error {
 	var (
-		parent  = identity.ChainID(chain[:len(chain)-1])
+		parent  = identity.ChainID(chain[:len(chain)-1]) // 除了最底层没有parent,其余层均有parent
 		chainID = identity.ChainID(chain)
-		layer   = layers[len(layers)-1]
+		layer   = layers[len(layers)-1] // 获取最后一层  TODO 为啥是获取最后一层
 		diff    ocispec.Descriptor
 		key     string
 		mounts  []mount.Mount
@@ -132,9 +134,14 @@ func applyLayers(ctx context.Context, layers []Layer, chain []digest.Digest, sn 
 	)
 
 	for {
+		// key = "extract-706323134-H4Kh sha256:d0157aa0c95a4cae128dab97d699b2f303c8bea46914dc4a40722411f50bb40e"
 		key = fmt.Sprintf(snapshots.UnpackKeyFormat, uniquePart(), chainID)
 
 		// Prepare snapshot with from parent, label as root
+		// 所谓的创建快照，其实主要做了两件事情：
+		// 一：创建v1/<namespace>/snapshots/<snapshots>桶，并在其中记录元信息
+		// 二：创建/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>目录，并在目录中创建fs, work目录
+		// 返回值为mount挂载参数
 		mounts, err = sn.Prepare(ctx, key, parent.String(), opts...)
 		if err != nil {
 			if errdefs.IsNotFound(err) && len(layers) > 1 {

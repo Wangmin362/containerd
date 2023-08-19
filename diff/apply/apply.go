@@ -67,6 +67,7 @@ func (s *fsApplier) Apply(ctx context.Context, desc ocispec.Descriptor, mounts [
 		}
 	}
 
+	// 这里应该是在读取镜像层
 	ra, err := s.store.ReaderAt(ctx, desc)
 	if err != nil {
 		return emptyDesc, fmt.Errorf("failed to get reader from content store: %w", err)

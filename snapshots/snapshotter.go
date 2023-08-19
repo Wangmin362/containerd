@@ -313,7 +313,7 @@ type Snapshotter interface {
 	// Multiple calls to Prepare or View with the same key should fail.
 	// 1、所谓的创建快照，其实仅仅是报快照的元信息保存到boltdb当中，然后在创建/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>目录
 	// 其中，快照的ID是通过boltdb的桶序列号生成的
-	// 2、Prepare创建的是KindView类型的快照
+	// 2、Prepare创建的是KindActive类型的快照
 	Prepare(ctx context.Context, key, parent string, opts ...Opt) ([]mount.Mount, error)
 
 	// View behaves identically to Prepare except the result may not be

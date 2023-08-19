@@ -417,8 +417,9 @@ func (o *snapshotter) getCleanupDirectories(ctx context.Context) ([]string, erro
 	return cleanup, nil
 }
 
-// 所谓的创建快照，其实仅仅是报快照的元信息保存到boltdb当中，然后在创建/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>目录
+// 1、所谓的创建快照，其实仅仅是报快照的元信息保存到boltdb当中，然后在创建/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>目录
 // 其中，快照的ID是通过boltdb的桶序列号生成的
+// 2、这里的key为：<default>/<sid>/sh256: xxxxxx
 func (o *snapshotter) createSnapshot(ctx context.Context, kind snapshots.Kind, key, parent string, opts []snapshots.Opt) (_ []mount.Mount, err error) {
 	var (
 		s        storage.Snapshot
@@ -446,13 +447,13 @@ func (o *snapshotter) createSnapshot(ctx context.Context, kind snapshots.Kind, k
 	if err := o.ms.WithTransaction(ctx, true, func(ctx context.Context) (err error) {
 		// /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots
 		snapshotDir := filepath.Join(o.root, "snapshots")
-		// 在/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/目录中创建目录，然后在临时目录中创建fs目录以及work目录
+		// 在/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/目录中创建临时目录，然后在临时目录中创建fs目录以及work目录
 		td, err = o.prepareDirectory(ctx, snapshotDir, kind)
 		if err != nil {
 			return fmt.Errorf("failed to create prepare snapshot dir: %w", err)
 		}
 
-		// 所谓的创建快照，其实仅仅是保存快照的元信息到boltdb当中
+		// 所谓的创建快照，其实仅仅是保存快照的元信息到boltdb当中，同时父快照的某些信息也会保存
 		s, err = storage.CreateSnapshot(ctx, kind, key, parent, opts...)
 		if err != nil {
 			return fmt.Errorf("failed to create snapshot: %w", err)
@@ -490,7 +491,7 @@ func (o *snapshotter) createSnapshot(ctx context.Context, kind snapshots.Kind, k
 // snapshotDir = /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots
 // 在/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/目录中创建目录，然后在临时目录中创建fs目录以及work目录
 func (o *snapshotter) prepareDirectory(ctx context.Context, snapshotDir string, kind snapshots.Kind) (string, error) {
-	// 在/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots目录中创建一个零食目录，目录pattern为：new-
+	// 在/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots目录中创建一个临时目录，目录pattern为：new-
 	td, err := os.MkdirTemp(snapshotDir, "new-")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp dir: %w", err)
@@ -512,7 +513,7 @@ func (o *snapshotter) prepareDirectory(ctx context.Context, snapshotDir string, 
 }
 
 func (o *snapshotter) mounts(s storage.Snapshot) []mount.Mount {
-	// 一个快照的没有Parent，说明是最基础的那一层
+	// 没有父镜像层说明是最基础的那一层
 	if len(s.ParentIDs) == 0 {
 		// if we only have one layer/no parents then just return a bind mount as overlay
 		// will not work
@@ -523,6 +524,7 @@ func (o *snapshotter) mounts(s storage.Snapshot) []mount.Mount {
 
 		return []mount.Mount{
 			{
+				// Source = /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>/fs
 				Source: o.upperPath(s.ID),
 				Type:   "bind",
 				Options: []string{
@@ -545,8 +547,8 @@ func (o *snapshotter) mounts(s storage.Snapshot) []mount.Mount {
 
 	if s.Kind == snapshots.KindActive {
 		options = append(options,
-			fmt.Sprintf("workdir=%s", o.workPath(s.ID)),
-			fmt.Sprintf("upperdir=%s", o.upperPath(s.ID)),
+			fmt.Sprintf("workdir=%s", o.workPath(s.ID)),   // workdir = /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>/work
+			fmt.Sprintf("upperdir=%s", o.upperPath(s.ID)), // upperdir=/var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>/fs
 		)
 	} else if len(s.ParentIDs) == 1 {
 		return []mount.Mount{
@@ -566,6 +568,7 @@ func (o *snapshotter) mounts(s storage.Snapshot) []mount.Mount {
 		parentPaths[i] = o.upperPath(s.ParentIDs[i])
 	}
 
+	// 拼接lowerdir
 	options = append(options, fmt.Sprintf("lowerdir=%s", strings.Join(parentPaths, ":")))
 	return []mount.Mount{
 		{
@@ -582,6 +585,7 @@ func (o *snapshotter) upperPath(id string) string {
 	return filepath.Join(o.root, "snapshots", id, "fs")
 }
 
+// /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/<id>/work
 func (o *snapshotter) workPath(id string) string {
 	return filepath.Join(o.root, "snapshots", id, "work")
 }
