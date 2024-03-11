@@ -56,7 +56,7 @@ type Snapshot struct {
 	// 当前快照的状态
 	Kind snapshots.Kind
 	ID   string
-	// 当前快照的所有Parent ID
+	// 当前层的父parent，其主要目的还是为了构建overlay参数的lowerdir参数
 	ParentIDs []string
 }
 

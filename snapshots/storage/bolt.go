@@ -232,7 +232,7 @@ func GetSnapshot(ctx context.Context, key string) (s Snapshot, err error) {
 }
 
 // CreateSnapshot inserts a record for an active or view snapshot with the provided parent.
-// 所谓的创建快照，其实仅仅是保存快照的元信息到boltdb当中
+// 所谓的创建快照，其实仅仅是保存快照的元信息到boltdb当中，于此同时还会修改父快照的元信息
 func CreateSnapshot(ctx context.Context, kind snapshots.Kind, key, parent string, opts ...snapshots.Opt) (s Snapshot, err error) {
 	// 只能接受KindActive以及KindView类型的快照创建
 	switch kind {
@@ -248,7 +248,7 @@ func CreateSnapshot(ctx context.Context, kind snapshots.Kind, key, parent string
 		}
 	}
 
-	// 创建/v1/snapshots/parents桶，被传给func
+	// 创建/v1/snapshots、 创建/v1/parents桶
 	err = createBucketIfNotExists(ctx, func(ctx context.Context, bkt, pbkt *bolt.Bucket) error {
 		var (
 			spbkt *bolt.Bucket
@@ -275,7 +275,7 @@ func CreateSnapshot(ctx context.Context, kind snapshots.Kind, key, parent string
 			return err
 		}
 
-		// 获取桶的下一个序列号，每用一次，增加一
+		// 获取/v1/snapshots/<key>桶的下一个序列号，每用一次，增加一
 		id, err := bkt.NextSequence()
 		if err != nil {
 			return fmt.Errorf("unable to get identifier for snapshot %q: %w", key, err)
@@ -525,7 +525,7 @@ func withBucket(ctx context.Context, fn func(context.Context, *bolt.Bucket, *bol
 	return fn(ctx, bkt.Bucket(bucketKeySnapshot), bkt.Bucket(bucketKeyParents))
 }
 
-// 创建/v1/snapshots/parents桶
+// 创建/v1/snapshots、 创建/v1/parents桶
 func createBucketIfNotExists(ctx context.Context, fn func(context.Context, *bolt.Bucket, *bolt.Bucket) error) error {
 	tx, ok := ctx.Value(transactionKey{}).(*bolt.Tx)
 	if !ok {

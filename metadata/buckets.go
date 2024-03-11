@@ -238,7 +238,7 @@ func getContainerBucket(tx *bolt.Tx, namespace, id string) *bolt.Bucket {
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectContainers, []byte(id))
 }
 
-// 创建/v1/<namespace>/snapshots/<snapshots-type>桶
+// 创建/v1/<namespace>/snapshots/<snapshot>桶
 func createSnapshotterBucket(tx *bolt.Tx, namespace, snapshotter string) (*bolt.Bucket, error) {
 	bkt, err := createBucketIfNotExists(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectSnapshots, []byte(snapshotter))
 	if err != nil {
@@ -251,7 +251,7 @@ func getSnapshottersBucket(tx *bolt.Tx, namespace string) *bolt.Bucket {
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectSnapshots)
 }
 
-// 获取/v1/<namespace>/snapshots/<snapshotter-type>桶
+// 获取/v1/<namespace>/snapshots/<snapshotter>桶
 func getSnapshotterBucket(tx *bolt.Tx, namespace, snapshotter string) *bolt.Bucket {
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectSnapshots, []byte(snapshotter))
 }

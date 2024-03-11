@@ -411,6 +411,7 @@ func (i *image) Unpack(ctx context.Context, snapshotterName string, opts ...Unpa
 		}
 	}
 
+	// 一层一层的解压，从最底层开始解压
 	for _, layer := range layers {
 		unpacked, err = rootfs.ApplyLayerWithOpts(ctx, layer, chain, sn, a, config.SnapshotOpts, config.ApplyOpts)
 		if err != nil {
