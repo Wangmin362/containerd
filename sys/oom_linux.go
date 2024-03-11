@@ -45,10 +45,12 @@ func AdjustOOMScore(pid, score int) error {
 }
 
 // SetOOMScore sets the oom score for the provided pid
+// 设置OOM分数
 func SetOOMScore(pid, score int) error {
 	if score > OOMScoreAdjMax || score < OOMScoreAdjMin {
 		return fmt.Errorf("value out of range (%d): OOM score must be between %d and %d", score, OOMScoreAdjMin, OOMScoreAdjMax)
 	}
+	// TODO 看来linux的oom score也是和cgroup类似，也是通过文件的方式来控制
 	path := fmt.Sprintf("/proc/%d/oom_score_adj", pid)
 	f, err := os.OpenFile(path, os.O_WRONLY, 0)
 	if err != nil {

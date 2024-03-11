@@ -99,7 +99,7 @@ func CreateTopLevelDirectories(config *srvconfig.Config) error {
 }
 
 // New creates and initializes a new containerd server
-func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
+func New(ctx /*上下文参数，携带有某些信息*/ context.Context, config /*用户为containerd设置的配置文件*/ *srvconfig.Config) (*Server, error) {
 	// 主要是为了设置OOM参数以及Cgroup
 	if err := apply(ctx, config); err != nil {
 		return nil, err
@@ -136,26 +136,28 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 
 	// TODO 增加了GRPC Server Option参数
 	serverOpts := []grpc.ServerOption{
+		// 流拦截器
 		grpc.StreamInterceptor(grpc_middleware.ChainStreamServer(
 			otelgrpc.StreamServerInterceptor(),
 			grpc_prometheus.StreamServerInterceptor,
 			streamNamespaceInterceptor,
 		)),
+		// 一元拦截器
 		grpc.UnaryInterceptor(grpc_middleware.ChainUnaryServer(
 			otelgrpc.UnaryServerInterceptor(),
 			grpc_prometheus.UnaryServerInterceptor,
 			unaryNamespaceInterceptor,
 		)),
 	}
-	// 设置GRPC可以消息的最大阈值
+	// 设置GRPC可以消息的最大阈值，目前默认设置的是16MB
 	if config.GRPC.MaxRecvMsgSize > 0 {
 		serverOpts = append(serverOpts, grpc.MaxRecvMsgSize(config.GRPC.MaxRecvMsgSize))
 	}
-	// 设置GRPC发送消息的最大阈值
+	// 设置GRPC发送消息的最大阈值，目前最大设置的是16MB
 	if config.GRPC.MaxSendMsgSize > 0 {
 		serverOpts = append(serverOpts, grpc.MaxSendMsgSize(config.GRPC.MaxSendMsgSize))
 	}
-	// 实例化TTRPCServer，所谓的TTRPC，实际上就设置GRPC ober TLS
+	// 实例化TTRPCServer，所谓的TTRPC，实际上就设置GRPC over TLS
 	ttrpcServer, err := newTTRPCServer()
 	if err != nil {
 		return nil, err

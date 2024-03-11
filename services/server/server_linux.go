@@ -31,15 +31,19 @@ import (
 )
 
 // apply sets config settings on the server process
+// 设置
 func apply(ctx context.Context, config *srvconfig.Config) error {
+	// 设置OOM Score
 	if config.OOMScore != 0 {
 		log.G(ctx).Debugf("changing OOM score to %d", config.OOMScore)
 		if err := sys.SetOOMScore(os.Getpid(), config.OOMScore); err != nil {
 			log.G(ctx).WithError(err).Errorf("failed to change OOM score to %d", config.OOMScore)
 		}
 	}
+
+	// 配置cgroup
 	if config.Cgroup.Path != "" {
-		if cgroups.Mode() == cgroups.Unified {
+		if cgroups.Mode() == cgroups.Unified { // 检测当前系统是否开启了cgroup2
 			cg, err := cgroupsv2.Load(config.Cgroup.Path)
 			if err != nil {
 				return err
