@@ -19,6 +19,7 @@ package defaults
 const (
 	// DefaultMaxRecvMsgSize defines the default maximum message size for
 	// receiving protobufs passed over the GRPC API.
+	// 为啥不是1<<24为，因为1<<20就是1MB大小，这里想要表达的就是限制最大大小为16MB
 	DefaultMaxRecvMsgSize = 16 << 20
 	// DefaultMaxSendMsgSize defines the default maximum message size for
 	// sending protobufs passed over the GRPC API.

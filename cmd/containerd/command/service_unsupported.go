@@ -25,6 +25,7 @@ import (
 
 // serviceFlags returns an array of flags for configuring containerd to run
 // as a service. Only relevant on Windows.
+// 看起来这玩意只有在windows操作系统之上才有用
 func serviceFlags() []cli.Flag {
 	return nil
 }

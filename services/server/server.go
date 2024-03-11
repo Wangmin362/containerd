@@ -59,6 +59,7 @@ import (
 )
 
 // CreateTopLevelDirectories creates the top-level root and state directories.
+// 校验root、state目录必须存在，而且必须配置合适的权限
 func CreateTopLevelDirectories(config *srvconfig.Config) error {
 	switch {
 	case config.Root == "":
@@ -103,7 +104,15 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 	if err := apply(ctx, config); err != nil {
 		return nil, err
 	}
-	// 设置超时参数，这里使用一个Map来保存
+	// 设置超时参数，这里使用一个Map来保存，containerd默认设置的参数如下：
+	/*
+	  "io.containerd.timeout.bolt.open" = "0s"
+	  "io.containerd.timeout.metrics.shimstats" = "2s"
+	  "io.containerd.timeout.shim.cleanup" = "5s"
+	  "io.containerd.timeout.shim.load" = "5s"
+	  "io.containerd.timeout.shim.shutdown" = "3s"
+	  "io.containerd.timeout.task.state" = "2s"
+	*/
 	for key, sec := range config.Timeouts {
 		d, err := time.ParseDuration(sec)
 		if err != nil {
@@ -177,6 +186,7 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 	}
 
 	// grpcService allows GRPC services to be registered with the underlying server
+	// TODO 注册服务
 	type grpcService interface {
 		Register(*grpc.Server) error
 	}
@@ -309,6 +319,7 @@ func New(ctx context.Context, config *srvconfig.Config) (*Server, error) {
 }
 
 // Server is the containerd main daemon
+// Server实际上就是containerd后台进程的抽象
 type Server struct {
 	grpcServer  *grpc.Server
 	ttrpcServer *ttrpc.Server

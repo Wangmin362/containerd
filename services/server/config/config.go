@@ -80,7 +80,15 @@ type Config struct {
 	// TODO containerd的代理插件有啥用？
 	ProxyPlugins map[string]ProxyPlugin `toml:"proxy_plugins"`
 	// Timeouts specified as a duration
-	// 超时参数设置
+	// 超时参数设置，containerd默认设置的参数如下：
+	/*
+	  "io.containerd.timeout.bolt.open" = "0s"
+	  "io.containerd.timeout.metrics.shimstats" = "2s"
+	  "io.containerd.timeout.shim.cleanup" = "5s"
+	  "io.containerd.timeout.shim.load" = "5s"
+	  "io.containerd.timeout.shim.shutdown" = "3s"
+	  "io.containerd.timeout.task.state" = "2s"
+	*/
 	Timeouts map[string]string `toml:"timeouts"`
 	// Imports are additional file path list to config files that can overwrite main config file fields
 	// 这个参数还是比较容易理解，通过这个配置可以把containerd参数分散写在多个地方，然后通过imports参数导入进来
@@ -140,7 +148,7 @@ func (c *Config) ValidateV2() error {
 
 // GRPCConfig provides GRPC configuration for the socket
 type GRPCConfig struct {
-	Address        string `toml:"address"`
+	Address        string `toml:"address"` // UDS地址，也称为本地地址，因为是通过UDS通信
 	TCPAddress     string `toml:"tcp_address"`
 	TCPTLSCA       string `toml:"tcp_tls_ca"`
 	TCPTLSCert     string `toml:"tcp_tls_cert"`
@@ -202,7 +210,8 @@ func (c *Config) Decode(p *plugin.Registration) (interface{}, error) {
 }
 
 // LoadConfig loads the containerd server config from the provided path
-func LoadConfig(path string, out *Config) error {
+// 读取path路径指定的containerd配置文件，并把配置反序列化到out对象当中
+func LoadConfig(path /* 默认值为/etc/containerd/config.toml */ string, out *Config) error {
 	if out == nil {
 		return fmt.Errorf("argument out must not be nil: %w", errdefs.ErrInvalidArgument)
 	}

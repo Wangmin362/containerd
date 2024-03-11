@@ -92,6 +92,7 @@ func outputConfig(cfg *srvconfig.Config) error {
 	return err
 }
 
+// 构造默认的配置
 func defaultConfig() *srvconfig.Config {
 	return platformAgnosticDefaultConfig()
 }
@@ -128,17 +129,17 @@ func platformAgnosticDefaultConfig() *srvconfig.Config {
 		// this version MUST remain set to 1 until either there exists a means to
 		// override / configure the default at the containerd cli .. or when
 		// version 1 is no longer supported
-		Version: 1,
-		Root:    defaults.DefaultRootDir,
-		State:   defaults.DefaultStateDir,
-		GRPC: srvconfig.GRPCConfig{
-			Address:        defaults.DefaultAddress,
-			MaxRecvMsgSize: defaults.DefaultMaxRecvMsgSize,
-			MaxSendMsgSize: defaults.DefaultMaxSendMsgSize,
+		Version: 1,                        // 默认设置为1，实际上目前都是使用2  TODO 1和2有啥区别？ 如何从1升级到2，可以直接升级么？
+		Root:    defaults.DefaultRootDir,  // 默认值为/var/lib/containerd，用于保存containerd下载的镜像、运行的容器、任务等等
+		State:   defaults.DefaultStateDir, // 默认值为/run/containerd，用于保存containerd运行过程中创建的socket
+		GRPC: srvconfig.GRPCConfig{ // 设置默认的GRPC配置
+			Address:        defaults.DefaultAddress,        // 默认值为/run/containerd/containerd.sock
+			MaxRecvMsgSize: defaults.DefaultMaxRecvMsgSize, // 设置GRPC接口最大可以接收16MB大小的数据
+			MaxSendMsgSize: defaults.DefaultMaxSendMsgSize, // 设置GRPC接口最大可以发送16MB大小的数据
 		},
-		DisabledPlugins:  []string{},
-		RequiredPlugins:  []string{},
-		StreamProcessors: streamProcessors(),
+		DisabledPlugins:  []string{},         // 禁用的插件
+		RequiredPlugins:  []string{},         // TODO 什么叫做Required插件？
+		StreamProcessors: streamProcessors(), // TODO 什么叫做流处理器？
 	}
 }
 

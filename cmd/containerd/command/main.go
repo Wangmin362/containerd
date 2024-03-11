@@ -63,9 +63,9 @@ func init() {
 // App returns a *cli.App instance.
 func App() *cli.App {
 	app := cli.NewApp()
-	app.Name = "containerd"
-	app.Version = version.Version
-	app.Usage = usage
+	app.Name = "containerd"       // 实例化一个应用程序，名字叫做containerd
+	app.Version = version.Version // 设置版本
+	app.Usage = usage             // 表明containerd是一个高性能容器运行时？ TODO containerd的高性能表现在哪里？
 	app.Description = `
 containerd is a high performance container runtime whose daemon can be started
 by using this command. If none of the *config*, *publish*, *oci-hook*, or *help* commands
@@ -79,62 +79,116 @@ generate the default configuration for containerd. The output of that command
 can be used and modified as necessary as a custom configuration.`
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:  "config,c",
+			Name:  "config,c", // containerd的配置文件，譬如代理配置，root目录配置，state目录配置，日志，插件等等，默认路径为/run/containerd/config.toml
 			Usage: "Path to the configuration file",
 			Value: filepath.Join(defaults.DefaultConfigDir, "config.toml"),
 		},
 		cli.StringFlag{
-			Name:  "log-level,l",
+			Name:  "log-level,l", // TODO 默认是啥？
 			Usage: "Set the logging level [trace, debug, info, warn, error, fatal, panic]",
 		},
 		cli.StringFlag{
-			Name:  "address,a",
+			Name:  "address,a", // 这里应配置Container启动的GRPC服务的地址 TODO 默认是啥？
 			Usage: "Address for containerd's GRPC server",
 		},
+
+		/*
+			root@containerd:~# tree /var/lib/containerd/ -L 3
+			/var/lib/containerd/
+			├── io.containerd.content.v1.content
+			│ ├── blobs
+			│ │ └── sha256
+			│ └── ingest
+			├── io.containerd.metadata.v1.bolt
+			│ └── meta.db
+			├── io.containerd.runtime.v1.linux
+			├── io.containerd.runtime.v2.task
+			├── io.containerd.snapshotter.v1.btrfs
+			├── io.containerd.snapshotter.v1.native
+			│ └── snapshots
+			├── io.containerd.snapshotter.v1.overlayfs
+			│ ├── metadata.db
+			│ └── snapshots
+			│     ├── 1
+			│     ├── 10
+			│     ├── 11
+			│     ├── 12
+			│     ├── 13
+			│     ├── 14
+			│     ├── 15
+			│     ├── 16
+			│     ├── 17
+			│     ├── 18
+			│     ├── 2
+			│     ├── 3
+			│     ├── 4
+			│     ├── 5
+			│     ├── 6
+			│     ├── 7
+			│     ├── 8
+			│     └── 9
+			└── tmpmounts
+		*/
 		cli.StringFlag{
-			Name:  "root",
+			Name:  "root", // Root地址， 默认值为/var/lib/containerd，保存的是containerd下载的镜像、运行中的容器
 			Usage: "containerd root directory",
 		},
+
+		/*
+		   root@containerd:~# tree /run/containerd/
+		   /run/containerd/
+		   ├── containerd.sock
+		   ├── containerd.sock.ttrpc
+		   ├── io.containerd.runtime.v1.linux
+		   └── io.containerd.runtime.v2.task
+		*/
 		cli.StringFlag{
-			Name:  "state",
+			Name:  "state", // 默认值为/run/containerd，保存的是containerd运行过程中创建的socket文件
 			Usage: "containerd state directory",
 		},
 	}
 	app.Flags = append(app.Flags, serviceFlags()...)
+	// 可以看到，containerd非常简单，只有三个子命令。这是因为containerd提供的是以服务的方式启动的，需要通过客户端来和服务端通信。
 	app.Commands = []cli.Command{
-		configCommand,
-		publishCommand,
-		ociHook,
+		configCommand,  // 用于生成containerd默认的配置以及查看containerd运行时的配置
+		publishCommand, // TODO 暂时不知道这玩意干嘛的
+		ociHook,        // TODO 似乎是为OCI容器注入Hook，我猜测这里的hook应该是针对于所有的容器，或者是这玩意可以配置选择器
 	}
 	app.Action = func(context *cli.Context) error {
 		var (
 			start       = time.Now()
-			signals     = make(chan os.Signal, 2048)
-			serverC     = make(chan *server.Server, 1)
+			signals     = make(chan os.Signal, 2048)   // 最多同时接收2048个信号
+			serverC     = make(chan *server.Server, 1) // TODO 我猜测这里的意思是最多只允许同时启动一个Server
 			ctx, cancel = gocontext.WithCancel(gocontext.Background())
-			config      = defaultConfig()
+			config      = defaultConfig() // 生成默认的配置
 		)
 
 		defer cancel()
 
 		// Only try to load the config if it either exists, or the user explicitly
 		// told us to load this6 path.
+		// 默认值就是/etc/containerd/config.toml
 		configPath := context.GlobalString("config") // 获取配置文件路径
 		_, err := os.Stat(configPath)
+		// 如果不是没有找到/etc/containerd/config.toml配置文件的错误或者是设置了config参数
 		if !os.IsNotExist(err) || context.GlobalIsSet("config") {
+			// 加载containerd的配置，然后反序列化到config对象当中
 			if err := srvconfig.LoadConfig(configPath, config); err != nil {
 				return err
 			}
 		}
 
-		// Apply flags to the config 解析/etc/containerd/config.toml配置文件到config对象当中
+		// Apply flags to the config
+		// 很简单，用户如果设置了root, state, address这三个参数，那么以用户在命令行中设置的参数为准，修改配置config实例对象
 		if err := applyFlags(context, config); err != nil {
 			return err
 		}
 
+		// 必须要监听某个地址，这里默认是/run/containerd/containerd.sock TODO 这种方式是通过UDS通信，难道containerd不可以通过端口通信？
 		if config.GRPC.Address == "" {
 			return fmt.Errorf("grpc address cannot be empty: %w", errdefs.ErrInvalidArgument)
 		}
+		// 所谓的TTRPC，其实就是GRPC over TLS，也就是安装的GRPC
 		if config.TTRPC.Address == "" {
 			// If TTRPC was not explicitly configured, use defaults based on GRPC.
 			config.TTRPC.Address = config.GRPC.Address + ".ttrpc"
@@ -142,12 +196,14 @@ can be used and modified as necessary as a custom configuration.`
 			config.TTRPC.GID = config.GRPC.GID
 		}
 
-		// Make sure top-level directories are created early. 确保一些目录必须存在
+		// Make sure top-level directories are created early.
+		// 校验root、state目录必须存在，而且必须配置合适的权限
 		if err := server.CreateTopLevelDirectories(config); err != nil {
 			return err
 		}
 
-		// Stop if we are registering or unregistering against Windows SCM. 仅和Windows有关
+		// Stop if we are registering or unregistering against Windows SCM.
+		// 仅和Windows有关
 		stop, err := registerUnregisterService(config.Root)
 		if err != nil {
 			logrus.Fatal(err)
@@ -156,16 +212,20 @@ can be used and modified as necessary as a custom configuration.`
 			return nil
 		}
 
+		// 处理SIGTERM, SIGINT, SIGUSR1, SIGPIPE信号
 		done := handleSignals(ctx, signals, serverC, cancel) // 处理退出信号
 		// start the signal handler as soon as we can to make sure that
 		// we don't miss any signals during boot
+		// 当SIGTERM, SIGINT, SIGUSER, SIGPIPE信号发生时，会把这些信号写入到signals通道当中
 		signal.Notify(signals, handledSignals...)
 
-		// cleanup temp mounts
+		// cleanup temp mounts 清理/var/lib/containerd/tmpmounts目录
 		if err := mount.SetTempMountLocation(filepath.Join(config.Root, "tmpmounts")); err != nil {
+			// 通过%w参数包裹错误，类似errors.wrap(err, "creating temp mount location")
 			return fmt.Errorf("creating temp mount location: %w", err)
 		}
 		// unmount all temp mounts on boot for the server
+		// TODO 这里应该是再清空tmpmount目录，这个目录有啥用？
 		warnings, err := mount.CleanupTempMounts(0)
 		if err != nil {
 			log.G(ctx).WithError(err).Error("unmounting temp mounts")
@@ -174,6 +234,7 @@ can be used and modified as necessary as a custom configuration.`
 			log.G(ctx).WithError(w).Warn("cleanup temp mount")
 		}
 
+		// 下面就开始启动容器啦
 		log.G(ctx).WithFields(log.Fields{
 			"version":  version.Version,
 			"revision": version.Revision,
@@ -193,6 +254,7 @@ can be used and modified as necessary as a custom configuration.`
 			defer close(chsrv)
 
 			// TODO 这里干了啥？
+			// 1、这里主要要是为了实例化一个containerd实例
 			server, err := server.New(ctx, config)
 			if err != nil {
 				select {
@@ -208,8 +270,8 @@ can be used and modified as necessary as a custom configuration.`
 			}
 			select {
 			case <-ctx.Done():
-				server.Stop()
-			case chsrv <- srvResp{s: server}:
+				server.Stop() // 一般是不会停止的
+			case chsrv <- srvResp{s: server}: // 所以一般是到了这里，把这个containerd实例放入到了channel当中
 			}
 		}()
 
@@ -226,7 +288,7 @@ can be used and modified as necessary as a custom configuration.`
 
 		// We don't send the server down serverC directly in the goroutine above because we need it lower down.
 		select { // TODO 这里为啥这么写，没看懂上面的注释
-		case <-ctx.Done():
+		case <-ctx.Done(): // TODO 上下文什么时候会被关闭
 			return ctx.Err()
 		case serverC <- server:
 		}
@@ -245,7 +307,7 @@ can be used and modified as necessary as a custom configuration.`
 			}
 			serve(ctx, l, server.ServeDebug)
 		}
-		// containerd的指数据
+		// containerd的指标
 		if config.Metrics.Address != "" {
 			l, err := net.Listen("tcp", config.Metrics.Address)
 			if err != nil {
@@ -260,6 +322,7 @@ can be used and modified as necessary as a custom configuration.`
 		}
 		serve(ctx, tl, server.ServeTTRPC)
 
+		// 一般我们是通过TCPAddress地址，通过网络来访问containerd提供的服务
 		if config.GRPC.TCPAddress != "" {
 			l, err := net.Listen("tcp", config.GRPC.TCPAddress)
 			if err != nil {
@@ -306,6 +369,7 @@ func serve(ctx gocontext.Context, l net.Listener, serveFunc func(net.Listener) e
 	}()
 }
 
+// 很简单，用户如果设置了root, state, address这三个参数，那么以用户在命令行中设置的参数为准，修改配置config实例对象
 func applyFlags(context *cli.Context, config *srvconfig.Config) error {
 	// the order for config vs flag values is that flags will always override
 	// the config values if they are set
@@ -322,7 +386,7 @@ func applyFlags(context *cli.Context, config *srvconfig.Config) error {
 	}{
 		{
 			name: "root",
-			d:    &config.Root,
+			d:    &config.Root, // 这里取了指针，其目的是就是为了写覆盖
 		},
 		{
 			name: "state",
@@ -334,7 +398,7 @@ func applyFlags(context *cli.Context, config *srvconfig.Config) error {
 		},
 	} {
 		if s := context.GlobalString(v.name); s != "" {
-			*v.d = s
+			*v.d = s // 如果用户设置了参数，那么覆盖配置文件中的参数
 			if v.name == "root" || v.name == "state" {
 				absPath, err := filepath.Abs(s)
 				if err != nil {
@@ -345,6 +409,7 @@ func applyFlags(context *cli.Context, config *srvconfig.Config) error {
 		}
 	}
 
+	// 空的，啥也不是
 	applyPlatformFlags(context)
 
 	return nil
