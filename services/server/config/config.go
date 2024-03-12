@@ -47,6 +47,8 @@ type Config struct {
 	TempDir string `toml:"temp"`
 	// PluginDir is the directory for dynamic plugins to be stored
 	// TODO containerd的动态插件原理是啥？
+	// 1、此参数默认是空的，通过containerd config default导出来的默认参数就是空的
+	// 2、在程序中，如果发现这个参数是空的，那么默认使用<Root>/plugins，一般来说就是/var/lib/containerd/plugins
 	PluginDir string `toml:"plugin_dir"`
 	// GRPC configuration settings
 	GRPC GRPCConfig `toml:"grpc"`
@@ -65,7 +67,10 @@ type Config struct {
 	DisabledPlugins []string `toml:"disabled_plugins"`
 	// RequiredPlugins are IDs of required plugins. Containerd exits if any
 	// required plugin doesn't exist or fails to be initialized or started.
-	// TODO 什么叫做必须的插件？
+	// 1、所谓必须的插件，是针对于用户来说的。在使用containerd的时候，用户可以指定自己需要使用的插件，通过RequiredPlugins这个参数来声明。
+	// containerd启动的时候会加载所有的插件，如果所有的插件都加载完成了，还是有没有加载到用户需要的插件，此时containerd就会任务初始化异常，
+	// 然后退出containerd的启动
+	// 2、TODO 对于用户来说，怎么知道当前containerd有那些插件？ 怎么知道每个插件的名字应该叫什么名字？
 	RequiredPlugins []string `toml:"required_plugins"`
 	// Plugins provides plugin specific configuration for the initialization of a plugin
 	// 各个插件的配置
@@ -353,6 +358,7 @@ func V1DisabledFilter(list []string) plugin.DisableFilter {
 
 // V2DisabledFilter matches based on URI
 func V2DisabledFilter(list []string) plugin.DisableFilter {
+	// 把列表转换为一个map，把时间复杂到降低为O(1)
 	set := make(map[string]struct{}, len(list))
 	for _, l := range list {
 		set[l] = struct{}{}

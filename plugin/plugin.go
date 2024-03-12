@@ -125,12 +125,13 @@ type Registration struct {
 	// 插件类型
 	Type Type
 	// ID of the plugin
+	// TODO 如何理解这里的位置
 	ID string
 	// Config specific to the plugin
-	// 每个插件的配置
+	// 每个插件的配置，插件可以单独设置配置，用户如何指定插件的配置？ 是否能够指定？
 	Config interface{}
 	// Requires is a list of plugins that the registered plugin requires to be available
-	// 当前插件的依赖插件
+	// 当前插件的依赖插件，也就说再当前插件初始化之前，依赖的插件必须要先被初始化
 	Requires []Type
 
 	// InitFn is called when initializing a plugin. The registration and
@@ -139,6 +140,7 @@ type Registration struct {
 	// 插件的初始化函数
 	InitFn func(*InitContext) (interface{}, error)
 	// Disable the plugin from loading
+	// 是否需要禁用此插件的加载
 	Disable bool
 }
 
@@ -221,8 +223,9 @@ func Graph(filter DisableFilter) (ordered []*Registration) {
 	register.RLock()
 	defer register.RUnlock()
 
+	// 遍历所有需要注册的插件
 	for _, r := range register.r {
-		if filter(r) {
+		if filter(r) { // 说明当前插件需要被禁用
 			r.Disable = true
 		}
 	}

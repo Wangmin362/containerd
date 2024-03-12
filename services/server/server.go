@@ -99,7 +99,10 @@ func CreateTopLevelDirectories(config *srvconfig.Config) error {
 }
 
 // New creates and initializes a new containerd server
-func New(ctx /*上下文参数，携带有某些信息*/ context.Context, config /*用户为containerd设置的配置文件*/ *srvconfig.Config) (*Server, error) {
+func New(
+	ctx context.Context, //上下文参数，携带有某些信息
+	config *srvconfig.Config, //用户为containerd设置的配置文件
+) (*Server, error) {
 	// 主要是为了设置OOM参数以及Cgroup
 	if err := apply(ctx, config); err != nil {
 		return nil, err
@@ -188,7 +191,7 @@ func New(ctx /*上下文参数，携带有某些信息*/ context.Context, config
 	}
 
 	// grpcService allows GRPC services to be registered with the underlying server
-	// TODO 注册服务
+	// containerd的插件一般都是至少实现了grpc, tcp, ttrpc这三个服务中的一个或者多个
 	type grpcService interface {
 		Register(*grpc.Server) error
 	}
@@ -204,12 +207,14 @@ func New(ctx /*上下文参数，携带有某些信息*/ context.Context, config
 	}
 
 	var (
+		// 实例化GRPC Server
 		grpcServer = grpc.NewServer(serverOpts...)
-		tcpServer  = grpc.NewServer(tcpServerOpts...)
+		// 实例化TCP Server
+		tcpServer = grpc.NewServer(tcpServerOpts...)
 
-		grpcServices  []grpcService
-		tcpServices   []tcpService
-		ttrpcServices []ttrpcService
+		grpcServices  []grpcService  // 用于保存当前实现了grpc服务的插件，其实就可以把当前插件看成一个grpc服务
+		tcpServices   []tcpService   // 用于保存当前实现了tcp服务的插件，其实就可以把当前插件看成一个tcp服务
+		ttrpcServices []ttrpcService // 用于保存当前实现了ttrpc服务的插件，其实就可以把当前插件看成一个ttrpc服务
 
 		s = &Server{
 			grpcServer:  grpcServer,
@@ -222,6 +227,7 @@ func New(ctx /*上下文参数，携带有某些信息*/ context.Context, config
 		initialized = plugin.NewPluginSet()
 		required    = make(map[string]struct{})
 	)
+	// 遍历所有需要加载的插件，使用Map来保存，这样就可以通过O(1)的空间复杂度遍历需要的插件，加载containerd的初始化
 	for _, r := range config.RequiredPlugins {
 		required[r] = struct{}{}
 	}
@@ -276,9 +282,10 @@ func New(ctx /*上下文参数，携带有某些信息*/ context.Context, config
 			continue
 		}
 
-		// 每删除一个插件，都需要从required中删除此插件
+		// 每成功实例化一个插件，都需要从required中删除此插件，用于标记当前插件已经初始化完成，已经满足要求
 		delete(required, reqID)
 		// check for grpc services that should be registered with the server
+		// 也就是说插件要么是一个GRPCService，要么是TTRPCService, 要么是TCPService，也有可能实现了多个
 		if src, ok := instance.(grpcService); ok {
 			grpcServices = append(grpcServices, src)
 		}
@@ -301,7 +308,7 @@ func New(ctx /*上下文参数，携带有某些信息*/ context.Context, config
 	}
 
 	// register services after all plugins have been initialized
-	// 注册服务
+	// 注册服务，本质上注册的其实是插件的能力
 	for _, service := range grpcServices {
 		if err := service.Register(grpcServer); err != nil {
 			return nil, err
@@ -323,12 +330,12 @@ func New(ctx /*上下文参数，携带有某些信息*/ context.Context, config
 // Server is the containerd main daemon
 // Server实际上就是containerd后台进程的抽象
 type Server struct {
-	grpcServer  *grpc.Server
-	ttrpcServer *ttrpc.Server
-	tcpServer   *grpc.Server
-	config      *srvconfig.Config
-	plugins     []*plugin.Plugin
-	ready       sync.WaitGroup
+	grpcServer  *grpc.Server      // grpc服务，一个containerd插件一般都是实现grpc, ttrpc, tcp服务中的一个或者多个
+	ttrpcServer *ttrpc.Server     // grpc over tls服务
+	tcpServer   *grpc.Server      // tcp服务
+	config      *srvconfig.Config // containerd的配置
+	plugins     []*plugin.Plugin  // containerd注册成功的插件
+	ready       sync.WaitGroup    // TODO 这里需要等待谁ready?
 }
 
 // ServeGRPC provides the containerd grpc APIs on the provided listener
@@ -419,6 +426,8 @@ func (s *Server) Wait() {
 
 // LoadPlugins loads all plugins into containerd and generates an ordered graph
 // of all plugins.
+// 1、加载用户自定义插件，不过这个功能暂时还不支持，需要等到containerd 1.8版本以上时才支持
+// 2、注册ContentPlugin,
 func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Registration, error) {
 	// load all plugins into containerd
 	// 如果没有指定插件的位置，那么默认从/var/lib/containerd/plugins目录中加载插件
@@ -426,7 +435,7 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 	if path == "" {
 		path = filepath.Join(config.Root, "plugins")
 	}
-	// 实际上这里目前是空的，并不会加载任何插件
+	// 实际上这里目前是空的，并不会加载任何插件，containerd需要再1.8以上的版本才会支持
 	if err := plugin.Load(path); err != nil {
 		return nil, err
 	}
@@ -445,6 +454,7 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 		},
 	})
 
+	// TODO 什么叫做代理客户端？
 	clients := &proxyClients{}
 	// TODO 代理插件干嘛用的？
 	for name, pp := range config.ProxyPlugins {
@@ -455,6 +465,7 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 			address = pp.Address
 		)
 
+		// TODO 为什么代理插件只支持snapshot, content类型插件？
 		switch pp.Type {
 		case string(plugin.SnapshotPlugin), "snapshot":
 			t = plugin.SnapshotPlugin
@@ -488,12 +499,13 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 
 	}
 
+	// 目前一般都是使用的V2类型
 	filter := srvconfig.V2DisabledFilter
 	if config.GetVersion() == 1 {
 		filter = srvconfig.V1DisabledFilter
 	}
 	// return the ordered graph for plugins
-	// TODO 猜测这里时再通过插件的依赖关系构建一个插件图
+	// 所谓的插件图，其实就是由于插件的依赖关系导致的。有些插件可能依赖另外插件的能力，因此这些被依赖的插件肯定就需要先运行，以来插件就需要后启动
 	return plugin.Graph(filter(config.DisabledPlugins)), nil
 }
 
