@@ -122,7 +122,8 @@ const (
 // 实际上registration抽象的是一个插件注册信息
 type Registration struct {
 	// Type of the plugin
-	// 插件类型
+	// 插件类型，containerd有许多不同的插件类型
+	// TODO 不同的插件类型在containerd中起着怎样的作用？
 	Type Type
 	// ID of the plugin
 	// TODO 如何理解这里的位置
@@ -157,10 +158,13 @@ func (r *Registration) Init(ic *InitContext) *Plugin {
 }
 
 // URI returns the full plugin URI
+// 所谓的URI，其实就是唯一资源标识符，在containerd中，插件的唯一资源标识符为<Type>.<ID>
 func (r *Registration) URI() string {
 	return fmt.Sprintf("%s.%s", r.Type, r.ID)
 }
 
+// 1、这里定义了一个匿名结构体，然后马上实例化了注册中心，register
+// 2、注册中心用于保存所有注册上来的擦火箭
 var register = struct {
 	sync.RWMutex
 	r []*Registration

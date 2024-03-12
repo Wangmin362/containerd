@@ -219,13 +219,13 @@ can be used and modified as necessary as a custom configuration.`
 		// 当SIGTERM, SIGINT, SIGUSER, SIGPIPE信号发生时，会把这些信号写入到signals通道当中
 		signal.Notify(signals, handledSignals...)
 
-		// cleanup temp mounts 清理/var/lib/containerd/tmpmounts目录
+		// cleanup temp mounts 创建/var/lib/containerd/tmpmounts目录
 		if err := mount.SetTempMountLocation(filepath.Join(config.Root, "tmpmounts")); err != nil {
 			// 通过%w参数包裹错误，类似errors.wrap(err, "creating temp mount location")
 			return fmt.Errorf("creating temp mount location: %w", err)
 		}
 		// unmount all temp mounts on boot for the server
-		// TODO 这里应该是再清空tmpmount目录，这个目录有啥用？
+		// TODO 清空tmpmount目录，这个目录有啥用？
 		warnings, err := mount.CleanupTempMounts(0)
 		if err != nil {
 			log.G(ctx).WithError(err).Error("unmounting temp mounts")
@@ -255,7 +255,7 @@ can be used and modified as necessary as a custom configuration.`
 
 			// TODO 这里干了啥？
 			// 1、这里主要要是为了实例化一个containerd实例
-			server, err := server.New(ctx, config)
+			containerd, err := server.New(ctx, config)
 			if err != nil {
 				select {
 				case chsrv <- srvResp{err: err}:
@@ -265,13 +265,13 @@ can be used and modified as necessary as a custom configuration.`
 			}
 
 			// Launch as a Windows Service if necessary 这里主要是在适配windows，直接忽略
-			if err := launchService(server, done); err != nil {
+			if err := launchService(containerd, done); err != nil {
 				logrus.Fatal(err)
 			}
 			select {
 			case <-ctx.Done():
-				server.Stop() // 一般是不会停止的
-			case chsrv <- srvResp{s: server}: // 所以一般是到了这里，把这个containerd实例放入到了channel当中
+				containerd.Stop() // 一般是不会停止的
+			case chsrv <- srvResp{s: containerd}: // 所以一般是到了这里，把这个containerd实例放入到了channel当中
 			}
 		}()
 
@@ -313,6 +313,7 @@ can be used and modified as necessary as a custom configuration.`
 			if err != nil {
 				return fmt.Errorf("failed to get listener for metrics endpoint: %w", err)
 			}
+			// 启动指标服务
 			serve(ctx, l, server.ServeMetrics)
 		}
 		// setup the ttrpc endpoint 创建containerd.sock.ttrpc文件
@@ -320,6 +321,7 @@ can be used and modified as necessary as a custom configuration.`
 		if err != nil {
 			return fmt.Errorf("failed to get listener for main ttrpc endpoint: %w", err)
 		}
+		// 启动TTRPC服务
 		serve(ctx, tl, server.ServeTTRPC)
 
 		// 一般我们是通过TCPAddress地址，通过网络来访问containerd提供的服务
@@ -328,6 +330,7 @@ can be used and modified as necessary as a custom configuration.`
 			if err != nil {
 				return fmt.Errorf("failed to get listener for TCP grpc endpoint: %w", err)
 			}
+			// 启动TCP服务
 			serve(ctx, l, server.ServeTCP)
 		}
 		// setup the main grpc endpoint 创建container.sock文件
@@ -335,12 +338,14 @@ can be used and modified as necessary as a custom configuration.`
 		if err != nil {
 			return fmt.Errorf("failed to get listener for main endpoint: %w", err)
 		}
+		// 启动GRPC服务
 		serve(ctx, l, server.ServeGRPC)
 
 		readyC := make(chan struct{})
 		go func() {
+			// 等待Server启动完成
 			server.Wait()
-			close(readyC)
+			close(readyC) // 启动完成之后，就关闭channel，通知所有对这个信号感兴趣的协程
 		}()
 
 		select {
@@ -350,6 +355,8 @@ can be used and modified as necessary as a custom configuration.`
 			}
 			// containerd成功启动
 			log.G(ctx).Infof("containerd successfully booted in %fs", time.Since(start).Seconds())
+
+			// 等待containerd推出
 			<-done
 		case <-done:
 		}

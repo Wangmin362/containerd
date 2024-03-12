@@ -125,7 +125,7 @@ func New(
 	}
 	// 加载插件：
 	// 1、动态加载plugin_dir参数指定的目录中的插件，实际上这个功能在containerd 1.8以前都没有实现，所以这一步并没有加载任何插件
-	// 2、注册content插件
+	// 2、注册ContentPlugin插件
 	// 3、注册代理插件，TODO 分析代理插件的具体作用
 	// 4、根据插件的依赖，对于插件注册信息进行排序，显然越底层的依赖应该放在前面
 	plugins, err := LoadPlugins(ctx, config)
@@ -335,7 +335,7 @@ type Server struct {
 	tcpServer   *grpc.Server      // tcp服务
 	config      *srvconfig.Config // containerd的配置
 	plugins     []*plugin.Plugin  // containerd注册成功的插件
-	ready       sync.WaitGroup    // TODO 这里需要等待谁ready?
+	ready       sync.WaitGroup    // 用于等待Server启动完成
 }
 
 // ServeGRPC provides the containerd grpc APIs on the provided listener
@@ -446,7 +446,6 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 		Type: plugin.ContentPlugin,
 		ID:   "content",
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
-			// TODO 这里暴露的数据有何作用？
 			ic.Meta.Exports["root"] = ic.Root
 			// 注意，每个插件在初始化的时候都被修改了root目录，规则为：<root>/<plugin-type>.<plugin-id>
 			// 对于content插件来说，root目录为：/var/lib/containerd/io.containerd.content.v1.content
@@ -457,30 +456,30 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 	// TODO 什么叫做代理客户端？
 	clients := &proxyClients{}
 	// TODO 代理插件干嘛用的？
-	for name, pp := range config.ProxyPlugins {
+	for name, proxyPlugin := range config.ProxyPlugins {
 		var (
 			t plugin.Type
 			f func(*grpc.ClientConn) interface{}
 
-			address = pp.Address
+			address = proxyPlugin.Address
 		)
 
 		// TODO 为什么代理插件只支持snapshot, content类型插件？
-		switch pp.Type {
-		case string(plugin.SnapshotPlugin), "snapshot":
+		switch proxyPlugin.Type {
+		case plugin.SnapshotPlugin, "snapshot":
 			t = plugin.SnapshotPlugin
 			ssname := name
 			f = func(conn *grpc.ClientConn) interface{} {
 				return ssproxy.NewSnapshotter(ssapi.NewSnapshotsClient(conn), ssname)
 			}
 
-		case string(plugin.ContentPlugin), "content":
+		case plugin.ContentPlugin, "content":
 			t = plugin.ContentPlugin
 			f = func(conn *grpc.ClientConn) interface{} {
 				return csproxy.NewContentStore(csapi.NewContentClient(conn))
 			}
 		default:
-			log.G(ctx).WithField("type", pp.Type).Warn("unknown proxy plugin type")
+			log.G(ctx).WithField("type", proxyPlugin.Type).Warn("unknown proxy plugin type")
 		}
 
 		// 注册代理插件
@@ -488,7 +487,9 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 			Type: t,
 			ID:   name,
 			InitFn: func(ic *plugin.InitContext) (interface{}, error) {
+				// 对外暴露插件的地址
 				ic.Meta.Exports["address"] = address
+				// 获取客户端，该客户端后面会和代理插件交互
 				conn, err := clients.getClient(address)
 				if err != nil {
 					return nil, err

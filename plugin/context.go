@@ -68,9 +68,10 @@ func (i *InitContext) Get(t Type) (interface{}, error) {
 // Meta contains information gathered from the registration and initialization
 // process.
 type Meta struct {
-	Platforms    []ocispec.Platform // platforms supported by plugin
-	Exports      map[string]string  // values exported by plugin
-	Capabilities []string           // feature switches for plugin
+	Platforms []ocispec.Platform // platforms supported by plugin
+	// 用于对外暴露数据，组件可以从里面取出自己感兴趣的数据，譬如root=/var/lib/containerd
+	Exports      map[string]string // values exported by plugin
+	Capabilities []string          // feature switches for plugin
 }
 
 // Plugin represents an initialized plugin, used with an init context.
