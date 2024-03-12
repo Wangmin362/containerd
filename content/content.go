@@ -38,10 +38,11 @@ import (
 // Note that until ingestion is complete, its content is not visible through
 // Provider or Manager. Once ingestion is complete, it is no longer exposed
 // through IngestManager.
-// TODO blob和ingest的区别是啥？ blob指的是已经完整下载的镜像层，而ingest则指的是没有完全下载的镜像层，可以用于做断点续传
+// Q: blob和ingest的区别是啥？
+// A: blob指的是已经完整下载的镜像层，而ingest则指的是没有完全下载的镜像层，可以用于做断点续传
 type Store interface {
 	Manager       // Manager实际上就是对于镜像层获取信息、修改信息、遍历镜像层以及删除镜像层的封装，blob的读取接口
-	Provider      // 用于读取镜像层， blob的写入接口
+	Provider      // 用于读取镜像层，blob的读取接口  为什么没有blob的写入接口，因为ingest其实就是blob，一旦ingest写入完成，就会被转为blob
 	IngestManager // 这个接口实际上是对于ingest的管理，主要是获取ingest信息以及删除, ingest的读取接口
 	Ingester      // ingest的写入接口
 }
@@ -78,20 +79,22 @@ type Ingester interface {
 // IngestManager provides methods for managing ingestions. An ingestion is a
 // not-yet-complete writing operation initiated using Ingester and identified
 // by a ref string.
-// 到底如何理解ingest这个概念？ 根据注释的含义，实际上就是ingest就是一个还未完成的写操作，这里的写操作肯定是指的镜像的写操作
+// 1、到底如何理解ingest这个概念？ 根据注释的含义，实际上就是ingest就是一个还未完成的写操作，这里的写操作肯定是指的镜像的写操作
 // IngestManager用于抽象还未完成镜像层的查询、删除操作
+// 2、ref其实就是blob的摘要，类似：c634a1bed226111dcfe0dc8b55e5ce067ba284eff8afd4bcf3b3ef218dbc5f09
 type IngestManager interface {
 	// Status returns the status of the provided ref.
+	// 根据ingest的摘要信息获取当前ingest的下载情况，可以用来断点续传
 	Status(ctx context.Context, ref string) (Status, error)
 
 	// ListStatuses returns the status of any active ingestions whose ref match
 	// the provided regular expression. If empty, all active ingestions will be
 	// returned.
-	// 返回所有镜像的信息，并根据过滤器过滤不需要的镜像
+	// 返回所有ingest的信息，并根据过滤器过滤不需要的ingest
 	ListStatuses(ctx context.Context, filters ...string) ([]Status, error)
 
 	// Abort completely cancels the ingest operation targeted by ref.
-	// 移除镜像所指向的ingest的所有数据
+	// 移除ingest的所有数据
 	Abort(ctx context.Context, ref string) error
 }
 
@@ -112,12 +115,24 @@ type Info struct {
 }
 
 // Status of a content operation (i.e. an ingestion)
+// Status主要是用于抽象当前Ingest下载情况
 type Status struct {
-	Ref       string
-	Offset    int64
-	Total     int64
-	Expected  digest.Digest
+	// 1、通过读取/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/ref文件获取值
+	// 2、格式类似：default/1/layer-sha256:33486cc813b57bab328443c4145fb29da20d7e6a1dda857716e2be590445cbba
+	Ref string
+	// 1、通过读取/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/data文件的大小
+	// 2、当前已经保存的文件的大小，通过这个参数可以实现断点续传
+	Offset int64
+	// 1、通过读取/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/total文件获取值
+	// 2、用于记录当前要下载文件的总大小
+	Total int64
+	// 当前文件的摘要
+	Expected digest.Digest
+	// 1、通过读取/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/startedat文件获取值
+	// 2、记录文件的创建时间
 	StartedAt time.Time
+	// 1、通过读取/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/updatedat文件获取值
+	// 2、记录文件的修改时间
 	UpdatedAt time.Time
 }
 

@@ -331,14 +331,15 @@ func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) err
 	})
 }
 
-// Status 实际上就是通过镜像的信息
-// 根据镜像名读取ingest信息
+// Status 实际上就是通过镜像的信息，读取的目录为：/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/data
+// 其中ref其实就是一个摘要
 func (s *store) Status(ctx context.Context, ref string) (content.Status, error) {
 	return s.status(s.ingestRoot(ref))
 }
 
 // ListStatuses 遍历containerd所包含的所有镜像的ingest信息
 func (s *store) ListStatuses(ctx context.Context, fs ...string) ([]content.Status, error) {
+	// 打开/var/lib/containerd/io.containerd.content.v1.content/ingest目录
 	fp, err := os.Open(filepath.Join(s.root, "ingest"))
 	if err != nil {
 		return nil, err
@@ -346,19 +347,23 @@ func (s *store) ListStatuses(ctx context.Context, fs ...string) ([]content.Statu
 
 	defer fp.Close()
 
+	// 读取所有目录
 	fis, err := fp.Readdir(-1)
 	if err != nil {
 		return nil, err
 	}
 
+	// 根据过滤器表达式构造过滤器
 	filter, err := filters.ParseAll(fs...)
 	if err != nil {
 		return nil, err
 	}
 
 	var active []content.Status
-	for _, fi := range fis {
+	for _, fi := range fis { // 遍历/var/lib/containerd/io.containerd.content.v1.content/ingest目录
+		// p = /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
 		p := filepath.Join(s.root, "ingest", fi.Name())
+		// 读取/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录中的信息，然后构造出Status返回
 		stat, err := s.status(p)
 		if err != nil {
 			if !os.IsNotExist(err) {
@@ -376,6 +381,7 @@ func (s *store) ListStatuses(ctx context.Context, fs ...string) ([]content.Statu
 			continue
 		}
 
+		// 如果当前ingest符合过滤表达式，就直接返回，否则忽略这个ingest
 		if filter.Match(adaptStatus(stat)) {
 			active = append(active, stat)
 		}
@@ -420,7 +426,9 @@ func (s *store) WalkStatusRefs(ctx context.Context, fn func(string) error) error
 
 // status works like stat above except uses the path to the ingest.
 func (s *store) status(ingestPath string) (content.Status, error) {
-	dp := filepath.Join(ingestPath, "data")
+	// ingestPath = /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
+	dp := filepath.Join(ingestPath, "data") // /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/data
+	// 判断当前路径是否存在
 	fi, err := os.Stat(dp)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -429,19 +437,25 @@ func (s *store) status(ingestPath string) (content.Status, error) {
 		return content.Status{}, err
 	}
 
+	// 读取/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/ref文件中的值，此值的格式一般为：
+	// default/1/layer-sha256:33486cc813b57bab328443c4145fb29da20d7e6a1dda857716e2be590445cbba
 	ref, err := readFileString(filepath.Join(ingestPath, "ref"))
 	if err != nil {
+		// 文件不存在，返回错误消息
 		if os.IsNotExist(err) {
+			// 通过%w包装错误
 			err = fmt.Errorf("%s: %w", err.Error(), errdefs.ErrNotFound)
 		}
 		return content.Status{}, err
 	}
 
+	// 读取/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/startedat文件
 	startedAt, err := readFileTimestamp(filepath.Join(ingestPath, "startedat"))
 	if err != nil {
 		return content.Status{}, fmt.Errorf("could not read startedat: %w", err)
 	}
 
+	// 读取/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/updatedat文件
 	updatedAt, err := readFileTimestamp(filepath.Join(ingestPath, "updatedat"))
 	if err != nil {
 		return content.Status{}, fmt.Errorf("could not read updatedat: %w", err)
@@ -449,16 +463,18 @@ func (s *store) status(ingestPath string) (content.Status, error) {
 
 	// because we don't write updatedat on every write, the mod time may
 	// actually be more up to date.
+	// 如果当前文件的修改时间在/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/updatedat文件记录的时间
+	// 之后，就通过操作系统中文件的修改时间作为ingest真是的修改时间
 	if fi.ModTime().After(updatedAt) {
 		updatedAt = fi.ModTime()
 	}
 
 	return content.Status{
-		Ref:       ref,
-		Offset:    fi.Size(),
-		Total:     s.total(ingestPath),
-		UpdatedAt: updatedAt,
-		StartedAt: startedAt,
+		Ref:       ref,                 // 格式类似：default/1/layer-sha256:33486cc813b57bab328443c4145fb29da20d7e6a1dda857716e2be590445cbba
+		Offset:    fi.Size(),           // 当前已经读取到的大小，通过这个参数可以做断点续传
+		Total:     s.total(ingestPath), // 读取文件/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/total文件，其实即使文件总大小
+		UpdatedAt: updatedAt,           // 更新时间
+		StartedAt: startedAt,           // 创建时间
 	}, nil
 }
 
@@ -477,6 +493,7 @@ func adaptStatus(status content.Status) filters.Adaptor {
 }
 
 // total attempts to resolve the total expected size for the write.
+// 读取文件/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/total文件
 func (s *store) total(ingestPath string) int64 {
 	totalS, err := readFileString(filepath.Join(ingestPath, "total"))
 	if err != nil {
@@ -526,6 +543,7 @@ func (s *store) Writer(ctx context.Context, opts ...content.WriterOpt) (content.
 		time.Sleep(time.Millisecond * time.Duration(randutil.Intn(1<<count)))
 	}
 
+	// 如果错误不为空，就说明这个文件没有被当前进程成功锁定，因此不能对该文件进行读写
 	if lockErr != nil {
 		return nil, lockErr
 	}
@@ -581,11 +599,15 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 	// code in the service that shouldn't be dealing with this.
 	// 如果当前镜像层已经下载，返回错误信息
 	if expected != "" {
+		// p = /var/lib/containerd/io.containerd.content.v1.content/blobs/sha256/<digest>
 		p, err := s.blobPath(expected)
 		if err != nil {
 			return nil, fmt.Errorf("calculating expected blob path for writer: %w", err)
 		}
+
+		// 查看当前文件是否存在，如果已经存在，直接返回错误信息
 		if _, err := os.Stat(p); err == nil {
+			// 通过%w包装错误信息
 			return nil, fmt.Errorf("content %v: %w", expected, errdefs.ErrAlreadyExists)
 		}
 	}
@@ -598,7 +620,7 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 	var (
 		// 摘要生成器
 		digester  = digest.Canonical.Digester()
-		offset    int64
+		offset    int64 // 当前ingest的偏移
 		startedAt time.Time
 		updatedAt time.Time
 	)
@@ -606,12 +628,12 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 	foundValidIngest := false
 	// ensure that the ingest path has been created.
 	// 创建/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录
-	// 如果目录已经存在，那么需要判断这个目录是否是我们当前正在下载的镜像所对应的目录，如果是，那么继续下载。实际上这个功能就是断点续传
+	// 如果目录已经存在，那么需要判断这个目录是否是我们当前正在下载的ingest所对应的目录，如果是，那么继续下载。实际上这个功能就是断点续传
 	if err := os.Mkdir(path, 0755); err != nil {
 		if !os.IsExist(err) {
 			return nil, err
 		}
-		// 恢复镜像下载点，进行断点续传
+		// 恢复ingest下载点，进行断点续传
 		status, err := s.resumeStatus(ref, total, digester)
 		if err == nil {
 			foundValidIngest = true
@@ -655,6 +677,7 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 		return nil, fmt.Errorf("failed to open data file: %w", err)
 	}
 
+	// 从偏移的位置开始写，其实就是继续下载
 	if _, err := fp.Seek(offset, io.SeekStart); err != nil {
 		fp.Close()
 		return nil, fmt.Errorf("could not seek to current write offset: %w", err)
@@ -679,6 +702,7 @@ func (s *store) writer(ctx context.Context, ref string, total int64, expected di
 func (s *store) Abort(ctx context.Context, ref string) error {
 	// 获取镜像的ingest路径：/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
 	root := s.ingestRoot(ref)
+	// 移除/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>目录
 	if err := os.RemoveAll(root); err != nil {
 		if os.IsNotExist(err) {
 			return fmt.Errorf("ingest ref %q: %w", ref, errdefs.ErrNotFound)
@@ -712,11 +736,11 @@ func (s *store) blobPath(dgst digest.Digest) (string, error) {
 	return filepath.Join(s.root, "blobs", dgst.Algorithm().String(), dgst.Encoded()), nil
 }
 
-// 获取镜像的ingest信息，位置在：/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
+// 1、获取镜像的ingest信息，位置在：/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
+// 2、ref其实就是ingest的摘要信息
 func (s *store) ingestRoot(ref string) string {
 	// we take a digest of the ref to keep the ingest paths constant length.
 	// Note that this is not the current or potential digest of incoming content.
-	// TODO 这里的ref应该就是镜像信息，这个方法应该是通过镜像名获取镜像的摘要
 	dgst := digest.FromString(ref)
 	// 获取镜像的ingest路径：/var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
 	return filepath.Join(s.root, "ingest", dgst.Encoded())
@@ -731,9 +755,9 @@ func (s *store) ingestRoot(ref string) string {
 // /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>data
 func (s *store) ingestPaths(ref string) (string, string, string) {
 	var (
-		fp = s.ingestRoot(ref)
-		rp = filepath.Join(fp, "ref")
-		dp = filepath.Join(fp, "data")
+		fp = s.ingestRoot(ref)         // /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>
+		rp = filepath.Join(fp, "ref")  // /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/ref
+		dp = filepath.Join(fp, "data") // /var/lib/containerd/io.containerd.content.v1.content/ingest/<digest>/data
 	)
 
 	return fp, rp, dp

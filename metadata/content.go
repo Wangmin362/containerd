@@ -277,6 +277,7 @@ func (cs *contentStore) ListStatuses(ctx context.Context, fs ...string) ([]conte
 		return nil, err
 	}
 
+	// 根据过滤表达式构造过滤器
 	filter, err := filters.ParseAll(fs...)
 	if err != nil {
 		return nil, err
@@ -324,13 +325,15 @@ func (cs *contentStore) ListStatuses(ctx context.Context, fs ...string) ([]conte
 
 }
 
+// 获取到的Ref一般长这样：default/1/layer-sha256:33486cc813b57bab328443c4145fb29da20d7e6a1dda857716e2be590445cbba
 func getRef(tx *bolt.Tx, ns, ref string) string {
 	// 获取/v1/<namespace>/content/ingests/<ref>桶
 	bkt := getIngestBucket(tx, ns, ref)
 	if bkt == nil {
 		return ""
 	}
-	// 读取/v1/<namespace>/content/ingests/<ref>桶
+	// 1、读取/v1/<namespace>/content/ingests/<ref>桶中ref的值
+	// 2、这个值的内容一般为：default/1/layer-sha256:33486cc813b57bab328443c4145fb29da20d7e6a1dda857716e2be590445cbba
 	v := bkt.Get(bucketKeyRef)
 	if len(v) == 0 {
 		return ""
@@ -350,7 +353,8 @@ func (cs *contentStore) Status(ctx context.Context, ref string) (content.Status,
 	var bref string
 	// 开启读事务
 	if err := view(ctx, cs.db, func(tx *bolt.Tx) error {
-		// 读取/v1/<namespace>/content/ingests/<ref>桶中的内容
+		// 1、读取/v1/<namespace>/content/ingests/<ref>桶中的内容
+		// 2、获取到的Ref一般长这样：default/1/layer-sha256:33486cc813b57bab328443c4145fb29da20d7e6a1dda857716e2be590445cbba
 		bref = getRef(tx, ns, ref)
 		if bref == "" {
 			return fmt.Errorf("reference %v: %w", ref, errdefs.ErrNotFound)
@@ -361,6 +365,7 @@ func (cs *contentStore) Status(ctx context.Context, ref string) (content.Status,
 		return content.Status{}, err
 	}
 
+	// 通过Store服务读取真是的文件系统中的ingest的值
 	st, err := cs.Store.Status(ctx, bref)
 	if err != nil {
 		return content.Status{}, err
@@ -524,6 +529,7 @@ func (cs *contentStore) Writer(ctx context.Context, opts ...content.WriterOpt) (
 			// available in the current namespace.
 			desc := wOpts.Desc
 			desc.Digest = ""
+			// 可以看到这里还是通过Store真正的下载数据
 			w, err = cs.Store.Writer(ctx, content.WithRef(bref), content.WithDescriptor(desc))
 		}
 		return err
@@ -750,9 +756,12 @@ func (nw *namespacedWriter) Status() (st content.Status, err error) {
 }
 
 func (cs *contentStore) ReaderAt(ctx context.Context, desc ocispec.Descriptor) (content.ReaderAt, error) {
+	// 判断当前摘要对应的桶是否能够正常读取
 	if err := cs.checkAccess(ctx, desc.Digest); err != nil {
 		return nil, err
 	}
+
+	// 由于是要读取真是的blob数据，因此需要通过Store对象来进行读取
 	return cs.Store.ReaderAt(ctx, desc)
 }
 
@@ -763,6 +772,7 @@ func (cs *contentStore) checkAccess(ctx context.Context, dgst digest.Digest) err
 	}
 
 	return view(ctx, cs.db, func(tx *bolt.Tx) error {
+		// 获取/v1/<namespace>/content/blob/<digest>桶
 		bkt := getBlobBucket(tx, ns, dgst)
 		if bkt == nil {
 			return fmt.Errorf("content digest %v: %w", dgst, errdefs.ErrNotFound)

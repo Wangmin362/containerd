@@ -34,6 +34,7 @@ type sizeReaderAt struct {
 
 // OpenReader creates ReaderAt from a file
 func OpenReader(p string) (content.ReaderAt, error) {
+	// 判断文件是否存在
 	fi, err := os.Stat(p)
 	if err != nil {
 		if !os.IsNotExist(err) {
