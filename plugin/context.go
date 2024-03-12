@@ -30,17 +30,18 @@ import (
 // 插件初始化上下文
 type InitContext struct {
 	Context           context.Context
-	Root              string      // containerd元数据存放位置，默认为：/var/lib/containerd
-	State             string      // containerd socket文件存放位置，默认为：/run/containerd
-	Config            interface{} // 插件的配置信息，改属性是通过Registration注册信息中的Config反序列化而来的
-	Address           string
-	TTRPCAddress      string
-	RegisterReadiness func() func()
+	Root              string        // 当前插件数据存放位置，默认为：/var/lib/containerd/<plugin-type>.<plugin-id>
+	State             string        // 当前插件socket文件存放位置，默认为：/run/containerd/<plugin-type>.<plugin-id>
+	Config            interface{}   // 插件的配置信息，改属性是通过Registration注册信息中的Config反序列化而来的
+	Address           string        // 插件监听地址
+	TTRPCAddress      string        // 插件的TTRPC监听地址
+	RegisterReadiness func() func() // TODO 如何理解这里的配置？
 
 	// deprecated: will be removed in 2.0, use plugin.EventType
+	// TODO 这玩意是怎么设计的？用来干嘛的？
 	Events *exchange.Exchange
 
-	// TODO 如何理解这里Meta的设计
+	// TODO 如何理解这里Meta的设计  用于在多个插件之间共享数据
 	Meta *Meta // plugins can fill in metadata at init.
 
 	// 包含containerd当前所有注册的插件
@@ -48,11 +49,15 @@ type InitContext struct {
 }
 
 // NewContext returns a new plugin InitContext
+// 实例化当前插件的初始化上下文
 func NewContext(ctx context.Context, r *Registration, plugins *Set, root, state string) *InitContext {
 	return &InitContext{
 		Context: ctx,
-		Root:    filepath.Join(root, r.URI()), // 注意，这里修改了每个插件的root目录，规则为：<root>/<plugin-type>.<plugin-id>
-		State:   filepath.Join(state, r.URI()),
+		// 注意，这里修改了每个插件的root目录，规则为：<root>/<plugin-type>.<plugin-id>，譬如/var/lib/containerd/io.containerd.content.v1.content
+		Root: filepath.Join(root, r.URI()),
+		// <state>/<plugin-type>.<plugin-id>，譬如/run/containerd/io.containerd.content.v1.content
+		State: filepath.Join(state, r.URI()),
+		// 元数据，用于在多个插件之间共享数据
 		Meta: &Meta{
 			Exports: map[string]string{},
 		},
@@ -75,13 +80,19 @@ type Meta struct {
 }
 
 // Plugin represents an initialized plugin, used with an init context.
+// 用于抽象当前已经初始化好的插件
 type Plugin struct {
+	// 插件的注册信息
 	Registration *Registration // registration, as initialized
-	Config       interface{}   // config, as initialized
-	Meta         *Meta
+	// 插件的配置
+	Config interface{} // config, as initialized
+	// 一些元数据，插件之间可以共享这些元数据
+	Meta *Meta
 
+	// 插件实例
 	instance interface{}
-	err      error // will be set if there was an error initializing the plugin
+	// 插件初始化错误
+	err error // will be set if there was an error initializing the plugin
 }
 
 // Err returns the errors during initialization.
@@ -102,6 +113,7 @@ func (p *Plugin) Instance() (interface{}, error) {
 // After iteratively instantiating plugins, this set should represent, the
 // ordered, initialization set of plugins for a containerd instance.
 type Set struct {
+	// 保存实例化好的插件
 	ordered     []*Plugin // order of initialization
 	byTypeAndID map[Type]map[string]*Plugin
 }
@@ -109,17 +121,20 @@ type Set struct {
 // NewPluginSet returns an initialized plugin set
 func NewPluginSet() *Set {
 	return &Set{
+		// 注意这里的二层map，并没有进行初始化
 		byTypeAndID: make(map[Type]map[string]*Plugin),
 	}
 }
 
-// Add a plugin to the set
+// Add 保存插件，同时检查插件是否是重复注册
 func (ps *Set) Add(p *Plugin) error {
 	if byID, typeok := ps.byTypeAndID[p.Registration.Type]; !typeok {
+		// 如果当前，还没有注册过这种类型的插件，就直接实例化一个map，保存这种类型的插件
 		ps.byTypeAndID[p.Registration.Type] = map[string]*Plugin{
 			p.Registration.ID: p,
 		}
 	} else if _, idok := byID[p.Registration.ID]; !idok {
+		// 如果当前保存过这种类型的插件，并且这个插件之前没有注册过，那么注册当前插件
 		byID[p.Registration.ID] = p
 	} else {
 		return fmt.Errorf("plugin %v already initialized: %w", p.Registration.URI(), errdefs.ErrAlreadyExists)

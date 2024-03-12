@@ -31,7 +31,7 @@ import (
 )
 
 // apply sets config settings on the server process
-// 设置
+// 设置OOM Score以及cGroup
 func apply(ctx context.Context, config *srvconfig.Config) error {
 	// 设置OOM Score
 	if config.OOMScore != 0 {

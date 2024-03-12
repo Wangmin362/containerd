@@ -64,7 +64,7 @@ type LabelStore interface {
 // Store can generally support multi-reader, single-writer ingest of data,
 // including resumable ingest.
 type store struct {
-	root string
+	root string // 此目录一般为/var/lib/containerd/io.containerd.content.v1.content
 	ls   LabelStore
 }
 

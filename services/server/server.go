@@ -99,6 +99,21 @@ func CreateTopLevelDirectories(config *srvconfig.Config) error {
 }
 
 // New creates and initializes a new containerd server
+// 1、设置OOM Score以及cGroup
+// 2、保存全局的超时时间，主要有io.containerd.timeout.bolt.open=0s, io.containerd.timeout.metrics.shimstats=2s,
+// io.containerd.timeout.shim.cleanup=5s, io.containerd.timeout.shim.load=5s, io.containerd.timeout.shim.shutdown=3s,
+// io.containerd.timeout.task.state=2s
+// 3、加载插件：
+// 3.1、加载用户自定义插件，不过这个功能暂时还不支持，需要等到containerd 1.8版本以上时才支持
+// 3.2、注册ContentPlugin TODO 需要仔细分析ContentPlugin插件的具体作用
+// 3.3、注册ProxyPlugin插件
+// 3.4、把注册上来的插件按照依赖关系进行排序，被依赖的插件需要排在前面，后面初始化的时候就会先初始化
+// 3.5、需要注意的是，这里仅仅是插件的注册，并非是插件初始化
+// 3.6、实际上虽然这里仅仅只注册了ContentPlugin以及ProxyPlugin这两种插件，但是由于register是一个全局的注册中心，很多插件都是直接
+// 在自己的init()函数当中通过plugin.Register()方法注册了自己，因此这里plugin.Graph()函数返回的是所有的插件，因为init函数肯定要
+// 比当前方法执行靠前。
+// 4、注册流处理器（StreamProcessor） TODO 需要仔细分析
+// 5、设置grpc参数
 func New(
 	ctx context.Context, //上下文参数，携带有某些信息
 	config *srvconfig.Config, //用户为containerd设置的配置文件
@@ -124,10 +139,14 @@ func New(
 		timeout.Set(key, d)
 	}
 	// 加载插件：
-	// 1、动态加载plugin_dir参数指定的目录中的插件，实际上这个功能在containerd 1.8以前都没有实现，所以这一步并没有加载任何插件
-	// 2、注册ContentPlugin插件
-	// 3、注册代理插件，TODO 分析代理插件的具体作用
-	// 4、根据插件的依赖，对于插件注册信息进行排序，显然越底层的依赖应该放在前面
+	// 1、加载用户自定义插件，不过这个功能暂时还不支持，需要等到containerd 1.8版本以上时才支持
+	// 2、注册ContentPlugin TODO 需要仔细分析ContentPlugin插件的具体作用
+	// 3、注册ProxyPlugin插件
+	// 4、把注册上来的插件按照依赖关系进行排序，被依赖的插件需要排在前面，后面初始化的时候就会先初始化
+	// 5、需要注意的是，这里仅仅是插件的注册，并非是插件初始化
+	// 6、实际上虽然这里仅仅只注册了ContentPlugin以及ProxyPlugin这两种插件，但是由于register是一个全局的注册中心，很多插件都是直接
+	// 在自己的init()函数当中通过plugin.Register()方法注册了自己，因此这里plugin.Graph()函数返回的是所有的插件，因为init函数肯定要
+	// 比当前方法执行靠前。
 	plugins, err := LoadPlugins(ctx, config)
 	if err != nil {
 		return nil, err
@@ -224,14 +243,15 @@ func New(
 		}
 		// TODO: Remove this in 2.0 and let event plugin crease it
 		events      = exchange.NewExchange()
-		initialized = plugin.NewPluginSet()
+		initialized = plugin.NewPluginSet() // 用于保存已经注册好的插件
 		required    = make(map[string]struct{})
 	)
 	// 遍历所有需要加载的插件，使用Map来保存，这样就可以通过O(1)的空间复杂度遍历需要的插件，加载containerd的初始化
 	for _, r := range config.RequiredPlugins {
 		required[r] = struct{}{}
 	}
-	// 遍历插件注册信息，根据插件的配置实例化每一个插件
+	// 1、遍历插件注册信息，根据插件的配置实例化每一个插件
+	// 2、需要注意的是，这里的plugins其实是containerd的所有插件，他们大多数都是通过自己的init()方法将自己注册到了register注册中心当中的。
 	for _, p := range plugins {
 		id := p.URI()
 		reqID := id
@@ -240,30 +260,35 @@ func New(
 		}
 		log.G(ctx).WithField("type", p.Type).Infof("loading plugin %q...", id)
 
+		// 实例化当前插件的初始化上下文
 		// 注意，这里修改了每个插件的root目录，规则为：<root>/<plugin-type>.<plugin-id>
 		initContext := plugin.NewContext(
-			ctx,
-			p,
-			initialized,
-			config.Root,
-			config.State,
+			ctx,          // 当前上下文呢
+			p,            // 当前插件
+			initialized,  // 已经初始化好的插件
+			config.Root,  // /var/lib/containerd
+			config.State, // /run/containerd，也就是保存socket的位置
 		)
+
+		// 继续初始化插件上下文
 		initContext.Events = events
 		initContext.Address = config.GRPC.Address
 		initContext.TTRPCAddress = config.TTRPC.Address
 		initContext.RegisterReadiness = s.RegisterReadiness
 
-		// load the plugin specific configuration if it is provided
+		// 加载插件配置
 		if p.Config != nil {
 			// 反序列化当前插件的配置
 			pc, err := config.Decode(p)
 			if err != nil {
 				return nil, err
 			}
+			// 初始化插件配置
 			initContext.Config = pc
 		}
-		// 执行插件的InitFn函数，并实例化插件实体
+		// 执行插件的InitFn函数，实例化插件实体
 		result := p.Init(initContext)
+		// 保存实例化好的插件实体，与此同时会检查插件是否重复注册
 		if err := initialized.Add(result); err != nil {
 			return nil, fmt.Errorf("could not add plugin result to plugin set: %w", err)
 		}
@@ -276,6 +301,8 @@ func New(
 			} else {
 				log.G(ctx).WithError(err).Warnf("failed to load plugin %s", id)
 			}
+
+			// 如果当前插件实例化失败，但是该插件又是必须要加载的，那么直接返回错误，因为containerd很有可能不会按照用户的预期运行
 			if _, ok := required[reqID]; ok {
 				return nil, fmt.Errorf("load required plugin %s: %w", id, err)
 			}
@@ -334,7 +361,7 @@ type Server struct {
 	ttrpcServer *ttrpc.Server     // grpc over tls服务
 	tcpServer   *grpc.Server      // tcp服务
 	config      *srvconfig.Config // containerd的配置
-	plugins     []*plugin.Plugin  // containerd注册成功的插件
+	plugins     []*plugin.Plugin  // 注册成功的插件
 	ready       sync.WaitGroup    // 用于等待Server启动完成
 }
 
@@ -413,6 +440,7 @@ func (s *Server) Stop() {
 	}
 }
 
+// RegisterReadiness 用于判断注册是否就绪
 func (s *Server) RegisterReadiness() func() {
 	s.ready.Add(1)
 	return func() {
@@ -427,7 +455,12 @@ func (s *Server) Wait() {
 // LoadPlugins loads all plugins into containerd and generates an ordered graph
 // of all plugins.
 // 1、加载用户自定义插件，不过这个功能暂时还不支持，需要等到containerd 1.8版本以上时才支持
-// 2、注册ContentPlugin,
+// 2、注册ContentPlugin TODO 需要仔细分析ContentPlugin插件的具体作用
+// 3、注册ProxyPlugin插件
+// 4、把注册上来的插件按照依赖关系进行排序，被依赖的插件需要排在前面，后面初始化的时候就会先初始化
+// 5、实际上虽然这里仅仅只注册了ContentPlugin以及ProxyPlugin这两种插件，但是由于register是一个全局的注册中心，很多插件都是直接
+// 在自己的init()函数当中通过plugin.Register()方法注册了自己，因此这里plugin.Graph()函数返回的是所有的插件，因为init函数肯定要
+// 比当前方法执行靠前。
 func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Registration, error) {
 	// load all plugins into containerd
 	// 如果没有指定插件的位置，那么默认从/var/lib/containerd/plugins目录中加载插件
@@ -441,7 +474,7 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 	}
 	// load additional plugins that don't automatically register themselves
 	// TODO content插件究竟干了啥？
-	// 这个插件和content-service插件有何区别？
+	// TODO 这个插件和content-service插件有何区别？
 	plugin.Register(&plugin.Registration{
 		Type: plugin.ContentPlugin,
 		ID:   "content",
@@ -449,6 +482,7 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 			ic.Meta.Exports["root"] = ic.Root
 			// 注意，每个插件在初始化的时候都被修改了root目录，规则为：<root>/<plugin-type>.<plugin-id>
 			// 对于content插件来说，root目录为：/var/lib/containerd/io.containerd.content.v1.content
+			// TODO 如何理解这个插件的工作职责？
 			return local.NewStore(ic.Root)
 		},
 	})

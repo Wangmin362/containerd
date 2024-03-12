@@ -145,15 +145,15 @@ type Registration struct {
 	Disable bool
 }
 
-// Init the registered plugin
+// Init the registered plugin 初始化注册的插件
 func (r *Registration) Init(ic *InitContext) *Plugin {
 	p, err := r.InitFn(ic)
 	return &Plugin{
-		Registration: r,
-		Config:       ic.Config,
-		Meta:         ic.Meta,
-		instance:     p,
-		err:          err,
+		Registration: r,         // 插件的注册信息
+		Config:       ic.Config, // 插件的配置
+		Meta:         ic.Meta,   // 插件间共享元数据
+		instance:     p,         // 插件实例
+		err:          err,       // 初始化插件的错误
 	}
 }
 
@@ -164,7 +164,7 @@ func (r *Registration) URI() string {
 }
 
 // 1、这里定义了一个匿名结构体，然后马上实例化了注册中心，register
-// 2、注册中心用于保存所有注册上来的擦火箭
+// 2、注册中心用于保存所有注册上来的插件
 var register = struct {
 	sync.RWMutex
 	r []*Registration
@@ -196,6 +196,7 @@ func Register(r *Registration) {
 	if r.ID == "" {
 		panic(ErrNoPluginID)
 	}
+	// 检测当前插件是否是唯一的， 如果当前注册上来的插件的URI和已经存在插件的URI一样，那么势必不能注册
 	if err := checkUnique(r); err != nil {
 		panic(err)
 	}
@@ -209,6 +210,7 @@ func Register(r *Registration) {
 	register.r = append(register.r, r)
 }
 
+// 检测当前插件是否是唯一的， 如果当前注册上来的插件的URI和已经存在插件的URI一样，那么势必不能注册
 func checkUnique(r *Registration) error {
 	for _, registered := range register.r {
 		if r.URI() == registered.URI() {

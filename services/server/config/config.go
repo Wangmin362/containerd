@@ -73,7 +73,7 @@ type Config struct {
 	// 2、TODO 对于用户来说，怎么知道当前containerd有那些插件？ 怎么知道每个插件的名字应该叫什么名字？
 	RequiredPlugins []string `toml:"required_plugins"`
 	// Plugins provides plugin specific configuration for the initialization of a plugin
-	// 各个插件的配置
+	// 各个插件的配置  TODO 一个具体的插件都有哪些配置项？从哪里获取？
 	Plugins map[string]toml.Tree `toml:"plugins"`
 	// OOMScore adjust the containerd's oom score
 	// TODO 如何理解这个参数？
@@ -204,10 +204,13 @@ func (c *Config) Decode(p *plugin.Registration) (interface{}, error) {
 	if c.GetVersion() == 1 {
 		id = p.ID
 	}
+
+	// 读取插件配置
 	data, ok := c.Plugins[id]
 	if !ok {
 		return p.Config, nil
 	}
+	// 反序列化
 	if err := data.Unmarshal(p.Config); err != nil {
 		return nil, err
 	}
