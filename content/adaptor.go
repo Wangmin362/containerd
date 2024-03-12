@@ -25,6 +25,7 @@ import (
 // AdaptInfo returns `filters.Adaptor` that handles `content.Info`.
 func AdaptInfo(info Info) filters.Adaptor {
 	return filters.AdapterFunc(func(fieldpath []string) (string, bool) {
+		// 如果路径为空，那肯定不可能出现
 		if len(fieldpath) == 0 {
 			return "", false
 		}

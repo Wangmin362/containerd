@@ -80,6 +80,7 @@ type dbOptions struct {
 // while proxying data shared across namespaces to backend
 // datastores for content and snapshots.
 // TODO containerd是如何抽象这个DB的？
+// 1、DB对象是通过boltdb抽象的一个元数据数据库，用于保存镜像、容器、名称空间、快照、内容数据(镜像层数据)的元信息。
 type DB struct {
 	db *bolt.DB
 	// TODO 这里的key是什么？

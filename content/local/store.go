@@ -70,8 +70,14 @@ type store struct {
 
 // NewStore returns a local content store
 // TODO 似乎containerd目前并不支持给镜像层存储标签，都是使用的这个函数去初始化的
-// content.local.store实现了对于blob和ingest的增删改查操作，这些操作都是基于文件的操作
+// 1、content.local.store实现了对于blob和ingest的增删改查操作，这些操作都是基于文件的操作
+// 2、所谓的blob其实就是Binary Large Object,也就是所谓的二进制大对象，blob这个概念并非是containerd发明的，而是很早就存在的概念。在containerd
+// 中,blob主要是指的是镜像层，不过一般都是通过zip, gzip类似的压缩算法压缩过。当然，其实并所有的blob都是镜像层，在containerd中，有些blob其实
+// OCI镜像规范的index以及manifest
+// 3、其实,ingest也是属于blob中的一种，只不过是ingest在containerd中代表的是未下载完成的镜像。镜像在下载过程中被称之为ingest，镜像的数据
+// 都是存放在content插件的ingest目录，一旦镜像下载完成，ingest中的数据就会被放入到blob目录当中。
 func NewStore(root string) (content.Store, error) {
+	// 这里在实例化内存插件的时候，没有实例化标签管理器，因此目前暂时是无法使用标签的
 	return NewLabeledStore(root, nil)
 }
 
@@ -80,6 +86,7 @@ func NewStore(root string) (content.Store, error) {
 // Note: content stores which are used underneath a metadata store may not
 // require labels and should use `NewStore`. `NewLabeledStore` is primarily
 // useful for tests or standalone implementations.
+// 首先创建了/var/lib/content/io.containerd.content.v1.content/ingest目录，然后再实例化store对象
 func NewLabeledStore(root string, ls LabelStore) (content.Store, error) {
 	// 创建目录/var/lib/content/io.containerd.content.v1.content/ingest
 	if err := os.MkdirAll(filepath.Join(root, "ingest"), 0777); err != nil {
@@ -107,12 +114,14 @@ func (s *store) Info(ctx context.Context, dgst digest.Digest) (content.Info, err
 	fi, err := os.Stat(p)
 	if err != nil {
 		if os.IsNotExist(err) {
+			// 通过%w包装错误
 			err = fmt.Errorf("content %v: %w", dgst, errdefs.ErrNotFound)
 		}
 
 		return content.Info{}, err
 	}
 	var labels map[string]string
+	// 目前以文件形式存储的方式是没有标签的，只有存储在boltdb中的元数据才有标签
 	if s.ls != nil {
 		labels, err = s.ls.Get(dgst)
 		if err != nil {
@@ -174,7 +183,7 @@ func (s *store) Delete(ctx context.Context, dgst digest.Digest) error {
 	return nil
 }
 
-// Update 用于更新镜像层的标签信息，TODO 看起来containerd并没有实现镜像层信息更新
+// Update 用于更新镜像层的标签信息，对于存到文件系统的blob，除了标签信息可以更改，其他信息是不能被更改的
 // 根据摘要更新镜像层的信息，镜像层其实就是一个二进制文件，在containerd中被称为blob。
 func (s *store) Update(ctx context.Context, info content.Info, fieldpaths ...string) (content.Info, error) {
 	// 如果没有初始化标签存储器，肯定是不能更改的
@@ -202,6 +211,8 @@ func (s *store) Update(ctx context.Context, info content.Info, fieldpaths ...str
 		all    bool
 		labels map[string]string
 	)
+
+	// 通过表达式更新信息
 	if len(fieldpaths) > 0 {
 		for _, path := range fieldpaths {
 			if strings.HasPrefix(path, "labels.") {
@@ -239,6 +250,7 @@ func (s *store) Update(ctx context.Context, info content.Info, fieldpaths ...str
 	info = s.info(info.Digest, fi, labels)
 	info.UpdatedAt = time.Now()
 
+	// 更新blob的创建时间、以及更新时间
 	if err := os.Chtimes(p, info.UpdatedAt, info.CreatedAt); err != nil {
 		log.G(ctx).WithError(err).Warnf("could not change access time for %s", info.Digest)
 	}
@@ -252,6 +264,7 @@ func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) err
 	// 获取blob对象的存储路径：/var/lib/containerd/io.containerd.content.v1.content/blobs
 	root := filepath.Join(s.root, "blobs")
 
+	// 根据传入的过滤表达式构造过滤器
 	filter, err := filters.ParseAll(fs...)
 	if err != nil {
 		return err
@@ -263,7 +276,7 @@ func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) err
 		if err != nil {
 			return err
 		}
-		// 如果当前镜像层的算法不可用，直接退出
+		// 如果当前镜像层的的摘要算法不是sha256, sha384, sha512其中的任意一种，那么当前blob是非法的，直接跳过
 		if !fi.IsDir() && !alg.Available() {
 			return nil
 		}
@@ -277,10 +290,12 @@ func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) err
 			return nil
 		}
 		if filepath.Dir(path) == root {
+			// 摘要算法名称，其实就是目录，目录结构为：/var/lib/containerd/io.containerd.content.v1.content/blobs/<alg>/<digest>
 			alg = digest.Algorithm(filepath.Base(path))
 
 			if !alg.Available() {
 				alg = ""
+				// 如果当前目录的摘要算法不合法，那么直接跳过这个目录
 				return filepath.SkipDir
 			}
 
@@ -288,7 +303,9 @@ func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) err
 			return nil
 		}
 
+		// 根据目录名以及文件名构造出OCI规范定义的摘要值
 		dgst := digest.NewDigestFromEncoded(alg, filepath.Base(path))
+		// 再次校验摘要是否合法
 		if err := dgst.Validate(); err != nil {
 			// log error but don't report
 			log.L.WithError(err).WithField("path", path).Error("invalid digest for blob path")
@@ -304,7 +321,9 @@ func (s *store) Walk(ctx context.Context, fn content.WalkFunc, fs ...string) err
 			}
 		}
 
+		// 构造content信息
 		info := s.info(dgst, fi, labels)
+		// 根据过滤器排除掉不符合的数据
 		if !filter.Match(content.AdaptInfo(info)) {
 			return nil
 		}
@@ -672,8 +691,9 @@ func (s *store) Abort(ctx context.Context, ref string) error {
 }
 
 func (s *store) blobPath(dgst digest.Digest) (string, error) {
-	// 校验当前的摘要是否有效
+	// 校验当前的摘要是否有效，摘要的校验规则就是当前摘要是否符合OCI规范的定义
 	if err := dgst.Validate(); err != nil {
+		// 这里使用%w包装错误
 		return "", fmt.Errorf("cannot calculate blob path from invalid digest: %v: %w", err, errdefs.ErrInvalidArgument)
 	}
 

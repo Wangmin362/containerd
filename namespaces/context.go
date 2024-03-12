@@ -72,7 +72,7 @@ func NamespaceRequired(ctx context.Context) (string, error) {
 	if !ok || namespace == "" {
 		return "", fmt.Errorf("namespace is required: %w", errdefs.ErrFailedPrecondition)
 	}
-	// 校验获取到的名称空间是否有效
+	// 校验获取到的名称空间是否有效，主要是校验名称空间的长度以及是否符合OCI的规范定义
 	if err := identifiers.Validate(namespace); err != nil {
 		return "", fmt.Errorf("namespace validation: %w", err)
 	}

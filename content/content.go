@@ -99,14 +99,16 @@ type IngestManager interface {
 //
 // TODO(stevvooe): Consider a very different name for this struct. Info is way
 // to general. It also reads very weird in certain context, like pluralization.
-// 镜像层的Info信息只需要获取摘要、大小、创建时间以及更新时间，标签。这些数据都是从BoltDB当中直接获取的，没有什么难度，
-// 桶路径为：/v1/<namespace>/content/blob/<digest>
+// 1、镜像层的Info信息只需要获取摘要、大小、创建时间以及更新时间，标签。
+// 2、这些数据都是从BoltDB当中直接获取的,没有什么难度,桶路径为：/v1/<namespace>/content/blob/<digest>
 type Info struct {
-	Digest    digest.Digest     // 这个属性相当于镜像层的ID
-	Size      int64             // 桶路径为：/v1/<namespace>/content/blob/<digest>, key为：size
-	CreatedAt time.Time         // 桶路径为：/v1/<namespace>/content/blob/<digest>, key为：createdat
-	UpdatedAt time.Time         // 桶路径为：/v1/<namespace>/content/blob/<digest>, key为：updatedat
-	Labels    map[string]string // 桶路径为：/v1/<namespace>/content/blob/<digest>/labels, 这个桶下的所有数据都是标签
+	Digest    digest.Digest // 这个属性相当于镜像层的ID，其实就是镜像层的摘要，一般长这样：sha256:7173b809ca12ec5dee4506cd86be934c4596dd234ee82c0662eac04a8c2c71dc
+	Size      int64         // 桶路径为：/v1/<namespace>/content/blob/<digest>, key为：size
+	CreatedAt time.Time     // 桶路径为：/v1/<namespace>/content/blob/<digest>, key为：createdat
+	UpdatedAt time.Time     // 桶路径为：/v1/<namespace>/content/blob/<digest>, key为：updatedat
+	// 桶路径为：/v1/<namespace>/content/blob/<digest>/labels, 这个桶下的所有数据都是标签
+	// 目前主要有containerd.io/distribution.source.k8s.mirror.nju.edu.cn以及containerd.io/uncompressed标签
+	Labels map[string]string
 }
 
 // Status of a content operation (i.e. an ingestion)
@@ -128,7 +130,8 @@ type Manager interface {
 	// Info will return metadata about content available in the content store.
 	//
 	// If the content is not present, ErrNotFound will be returned.
-	// 获取摘要所对应的镜像层的大小、创建时间、更新时间、标签信息，dgst相当于镜像层的ID，Info是直接通过读取操作系统中的镜像层文件返回的
+	// 1、根据摘获取对应的blob的信息，主要是大小、创建时间、更新时间、标签信息，dgst相当于镜像层的ID
+	// 2、这里返回的Info信息其实现有两种方式，一种是直接读取操作系统中的文件的信息，一种是通过读取boltdb metadata源数据
 	Info(ctx context.Context, dgst digest.Digest) (Info, error)
 
 	// Update updates mutable information related to content.
@@ -136,7 +139,7 @@ type Manager interface {
 	// fields will be updated.
 	// Mutable fields:
 	//  labels.*
-	// 更新镜像层的标签信息 TODO 看起来containerd并没有实现镜像层信息更新
+	// 更新镜像层的标签信息，主要是更新镜像层的标签信息
 	Update(ctx context.Context, info Info, fieldpaths ...string) (Info, error)
 
 	// Walk will call fn for each item in the content store which

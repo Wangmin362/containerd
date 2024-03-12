@@ -38,13 +38,17 @@ import (
 )
 
 type contentStore struct {
-	// TODO 为什么contentStore又组合了content.Store接口，这玩意本来就是为了实现content.Store接口的嘛
-	// 原因是content.store需要使用这个接口的能力来实现content.Store接口，实际上依赖的就是local.store
+	// Q:为什么contentStore又组合了content.Store接口，这玩意本来就是为了实现content.Store接口的嘛
+	// A:因为我们在存储数据的时候不可能只是简简单单的存储元数据，真是的blob数据才是我们真正想要的保存的。因此这里在存储元数据的时候就需要依赖
+	// 真正存储blob的底层实现，其实，看到后面我们会发现，这里其实就是content.local.store这个实现，用于保存blob到文件系统当中
 	content.Store
-	// 这里的DB可以认为就是boltdb
-	db     *DB
+	// 这里的DB可以认为就是boltdb，
+	// TODO 为什么contentStore依赖DB，然而这个DB又依赖contentStore，这不是就是循环依赖了么？ 为什么需要这么设计？
+	db *DB
+	// TODO 共享什么？
 	shared bool
-	l      sync.RWMutex
+	// TODO 这里保护的是那些资源的？
+	l sync.RWMutex
 }
 
 // newContentStore returns a namespaced content store using an existing
@@ -118,11 +122,12 @@ func (cs *contentStore) Update(ctx context.Context, info content.Info, fieldpath
 			return fmt.Errorf("content digest %v: %w", info.Digest, errdefs.ErrNotFound)
 		}
 
-		// 读取/v1/<namespace>/content/blob/<digest>桶中的所有数据到updated当汇总
+		// 读取/v1/<namespace>/content/blob/<digest>桶中的所有数据到updated对象当中
 		if err := readInfo(&updated, bkt); err != nil {
 			return fmt.Errorf("info %q: %w", info.Digest, err)
 		}
 
+		// 通过路径表达式更新数据
 		if len(fieldpaths) > 0 {
 			for _, path := range fieldpaths {
 				if strings.HasPrefix(path, "labels.") {
@@ -152,6 +157,7 @@ func (cs *contentStore) Update(ctx context.Context, info content.Info, fieldpath
 		}
 
 		updated.UpdatedAt = time.Now().UTC()
+		// 更新blob的信息
 		return writeInfo(&updated, bkt)
 	}); err != nil {
 		return content.Info{}, err
@@ -167,12 +173,14 @@ func (cs *contentStore) Walk(ctx context.Context, fn content.WalkFunc, fs ...str
 		return err
 	}
 
+	// 根据过滤表达式构造出过滤器
 	filter, err := filters.ParseAll(fs...)
 	if err != nil {
 		return err
 	}
 
 	// TODO: Batch results to keep from reading all info into memory
+	// 收集满足过滤条件的blob
 	var infos []content.Info
 	// 开启只读事务
 	if err := view(ctx, cs.db, func(tx *bolt.Tx) error {
@@ -184,11 +192,14 @@ func (cs *contentStore) Walk(ctx context.Context, fn content.WalkFunc, fs ...str
 
 		// 遍历/v1/<namespace>/content/blob桶，读取所有的blob信息，并过滤去满足条件的blob
 		return bkt.ForEach(func(k, v []byte) error {
+			// 解析摘要
 			dgst, err := digest.Parse(string(k))
 			if err != nil {
-				// Not a digest, skip
+				// Not a digest, skip 有错误就直接跳过
 				return nil
 			}
+
+			// 获取/v1/<namespace>/content/blob/<digest>通过
 			bbkt := bkt.Bucket(k)
 			if bbkt == nil {
 				return nil
@@ -196,9 +207,13 @@ func (cs *contentStore) Walk(ctx context.Context, fn content.WalkFunc, fs ...str
 			info := content.Info{
 				Digest: dgst,
 			}
+
+			// 从桶中读取blob的信息
 			if err := readInfo(&info, bkt.Bucket(k)); err != nil {
 				return err
 			}
+
+			// 如果当前blob信息满足过滤器，那么把当前bolb信息保存起来
 			if filter.Match(content.AdaptInfo(info)) {
 				infos = append(infos, info)
 			}
@@ -209,6 +224,7 @@ func (cs *contentStore) Walk(ctx context.Context, fn content.WalkFunc, fs ...str
 	}
 
 	for _, info := range infos {
+		// 挨个执行用户传入的fn函数
 		if err := fn(info); err != nil {
 			return err
 		}
@@ -217,7 +233,7 @@ func (cs *contentStore) Walk(ctx context.Context, fn content.WalkFunc, fs ...str
 	return nil
 }
 
-// Delete 删除指定摘要的blob
+// Delete 删除指定摘要的blob，实际上就是删除/v1/<namespace>/content/blob/<digest>桶，当然这个桶被删除了，那么这个桶地下所有的数据全部被删除
 func (cs *contentStore) Delete(ctx context.Context, dgst digest.Digest) error {
 	// 获取当前请求的名称空间
 	ns, err := namespaces.NamespaceRequired(ctx)
@@ -236,11 +252,12 @@ func (cs *contentStore) Delete(ctx context.Context, dgst digest.Digest) error {
 			return fmt.Errorf("content digest %v: %w", dgst, errdefs.ErrNotFound)
 		}
 
-		// 删除/v1/<namespace>/content/blob/<digest>桶
+		// 先获取获取/v1/<namespace>/content/blob桶通过，然后删除获取/v1/<namespace>/content/blob桶桶中
+		// 的/v1/<namespace>/content/blob/<digest>桶
 		if err := getBlobsBucket(tx, ns).DeleteBucket([]byte(dgst.String())); err != nil {
 			return err
 		}
-		// 移除当前blob的lease信息
+		// 移除当前blob的lease信息  路径为/v1/<namespace>/leases/<lease-id>/content/<digest>
 		if err := removeContentLease(ctx, tx, dgst); err != nil {
 			return err
 		}
@@ -792,6 +809,7 @@ func validateInfo(info *content.Info) error {
 }
 
 // 所谓的读取信息，其实就是直接读取的boltdb的信息
+// bkt的桶路径为：/v1/<namespace>/content/blob/<digest>
 func readInfo(info *content.Info, bkt *bolt.Bucket) error {
 	// 从/v1/<namespace>/content/blob/<digest>/createdat桶中获取创建时间赋值给info.CreatedAt
 	// 从/v1/<namespace>/content/blob/<digest>/updatedat桶中获取更新时间赋值给info.UpdatedAt
@@ -808,6 +826,7 @@ func readInfo(info *content.Info, bkt *bolt.Bucket) error {
 
 	// 获取/v1/<namespace>/content/blob/<digest>桶中当前摘要指向的镜像层的大小
 	if v := bkt.Get(bucketKeySize); len(v) > 0 {
+		// 看到没有，这里还是直接忽略了这个错误，因为在开发者看来，这里是不可能会转换失败的，因为元数据的写入都是由自己控制的
 		info.Size, _ = binary.Varint(v)
 	}
 
