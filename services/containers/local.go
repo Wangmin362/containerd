@@ -36,14 +36,15 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// TODO 为什么这里要实现一边客户端接口，这样设计有什么好处？
 func init() {
 	// 注册container-service,其实就是实现了container增删改查的grpc接口
 	plugin.Register(&plugin.Registration{
-		Type: plugin.ServicePlugin,
-		ID:   services.ContainersService,
+		Type: plugin.ServicePlugin,       // 服务类型插件，用于完成对于某个资源的增删改查动作，譬如这里的服务就是用于完成容器的增删改查
+		ID:   services.ContainersService, // ID = containers-service
 		Requires: []plugin.Type{
 			plugin.EventPlugin,    // 依赖事件服务
-			plugin.MetadataPlugin, // 依赖元数据服务
+			plugin.MetadataPlugin, // 依赖元数据服务，因为容器相关的信息也需要保存在boltdb当中，方便快速查询
 		},
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
 			// 获取元数据插件服务
@@ -57,7 +58,7 @@ func init() {
 				return nil, err
 			}
 
-			db := m.(*metadata.DB)
+			db := m.(*metadata.DB) // 这里直接强制转换
 			return &local{
 				Store:     metadata.NewContainerStore(db), // 实现了对于容器的增删改查，元数据保存在boltdb当中
 				db:        db,
@@ -70,6 +71,7 @@ func init() {
 // 1、实现容器grpc增删改查的客户端代码
 // 2、容器的客户端代码实现的核心就是依赖于元数据服务中的容器服务
 type local struct {
+	// 用于实现对于容器的增删改查
 	containers.Store
 	// TODO 为啥这里需要db，从代码上来看db仅仅适用于开启读事务以及写事务，可是containers.Store服务在实现时已经开启了读事务和写事务
 	db        *metadata.DB
@@ -229,9 +231,12 @@ type localStream struct {
 }
 
 func (s *localStream) Recv() (*api.ListContainerMessage, error) {
+	// 当容器遍历完了就直接返回EOF
 	if s.i >= len(s.containers) {
 		return nil, io.EOF
 	}
+
+	// 每次只返回一个容器
 	c := s.containers[s.i]
 	s.i++
 	return &api.ListContainerMessage{

@@ -30,20 +30,24 @@ import (
 
 func init() {
 	plugin.Register(&plugin.Registration{
-		Type: plugin.GRPCPlugin,
+		Type: plugin.GRPCPlugin, // GRPC插件本质上就是在利用ServicePlugin实现自己的能力
 		ID:   "containers",
 		Requires: []plugin.Type{
 			plugin.ServicePlugin, // 依赖其它的服务插件
 		},
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
+			// 获取所有的服务类型插件，每一种资源都会有自己的服务插件，用于完成资源的增删改查
 			plugins, err := ic.GetByType(plugin.ServicePlugin)
 			if err != nil {
 				return nil, err
 			}
+
+			// 然后从所有的服务插件中去除容器服务插件
 			p, ok := plugins[services.ContainersService]
 			if !ok {
 				return nil, errors.New("containers service not found")
 			}
+			// 取出实例，如果ContainerServicePlugin初始化错误，直接返回错误
 			i, err := p.Instance()
 			if err != nil {
 				return nil, err
@@ -63,6 +67,7 @@ type service struct {
 var _ api.ContainersServer = &service{}
 
 func (s *service) Register(server *grpc.Server) error {
+	// 像GRPCServer中注册服务
 	api.RegisterContainersServer(server, s)
 	return nil
 }

@@ -31,6 +31,7 @@ import (
 	"google.golang.org/grpc/status"
 )
 
+// TODO 这玩意估计是封装给ctr工具使用的吧
 type remoteContainers struct {
 	client containersapi.ContainersClient
 }

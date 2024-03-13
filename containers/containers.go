@@ -103,23 +103,28 @@ type Store interface {
 	//
 	// Container object is returned on success. If the id is not known to the
 	// store, an error will be returned.
+	// 根据容器ID查询容器，TODO 这里的ID是什么格式，长什么样子
 	Get(ctx context.Context, id string) (Container, error)
 
 	// List returns containers that match one or more of the provided filters.
+	// 根据过滤表达式查询容器
 	List(ctx context.Context, filters ...string) ([]Container, error)
 
 	// Create a container in the store from the provided container.
+	// 创建容器
 	Create(ctx context.Context, container Container) (Container, error)
 
 	// Update the container with the provided container object. ID must be set.
 	//
 	// If one or more fieldpaths are provided, only the field corresponding to
 	// the fieldpaths will be mutated.
+	// 更新容器
 	Update(ctx context.Context, container Container, fieldpaths ...string) (Container, error)
 
 	// Delete a container using the id.
 	//
 	// nil will be returned on success. If the container is not known to the
 	// store, ErrNotFound will be returned.
+	// 根据ID删除容器
 	Delete(ctx context.Context, id string) error
 }
