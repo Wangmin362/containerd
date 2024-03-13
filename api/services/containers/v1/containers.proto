@@ -42,12 +42,17 @@ option go_package = "github.com/containerd/containerd/api/services/containers/v1
 // runtime, or changes as the "container" is started and stops, it probably
 // doesn't belong on this object.
 service Containers {
+	// 根据容器id查询容器
 	rpc Get(GetContainerRequest) returns (GetContainerResponse);
+	// 根据过滤表达式查询容器
 	rpc List(ListContainersRequest) returns (ListContainersResponse);
 	// 这里返回的容器，是通过流的方式返回的
 	rpc ListStream(ListContainersRequest) returns (stream ListContainerMessage);
+	// 创建容器
 	rpc Create(CreateContainerRequest) returns (CreateContainerResponse);
+	// 更新容器
 	rpc Update(UpdateContainerRequest) returns (UpdateContainerResponse);
+	// 删除容器
 	rpc Delete(DeleteContainerRequest) returns (google.protobuf.Empty);
 }
 

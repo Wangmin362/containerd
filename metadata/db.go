@@ -85,6 +85,7 @@ type DB struct {
 	db *bolt.DB
 	// 这里的key就是快照插件的名字
 	ss map[string]*snapshotter
+	// 这里的内容存储，就是contnet.local.store，用于以文件的形式在文件系统上存储
 	cs *contentStore
 
 	// wlock is used to protect access to the data structures during garbage
