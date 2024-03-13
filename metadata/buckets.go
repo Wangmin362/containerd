@@ -176,6 +176,7 @@ func getBucket(tx *bolt.Tx, keys ...[]byte) *bolt.Bucket {
 	return bkt
 }
 
+// 创建/keys[0]/keys[1]/keys[2]/keys[3]...桶，如果这个桶不存在的话
 func createBucketIfNotExists(tx *bolt.Tx, keys ...[]byte) (*bolt.Bucket, error) {
 	bkt, err := tx.CreateBucketIfNotExists(keys[0])
 	if err != nil {

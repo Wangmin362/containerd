@@ -37,6 +37,8 @@ import (
 	bolt "go.etcd.io/bbolt"
 )
 
+// TODO 总结contentStore的作用
+// 主要用于在boltdb中存储元数据，同时在必要的时候会调用ContentPlugin提供的能力存储镜像层blob
 type contentStore struct {
 	// Q:为什么contentStore又组合了content.Store接口，这玩意本来就是为了实现content.Store接口的嘛
 	// A:因为我们在存储数据的时候不可能只是简简单单的存储元数据，真是的blob数据才是我们真正想要的保存的。因此这里在存储元数据的时候就需要依赖
@@ -45,7 +47,7 @@ type contentStore struct {
 	// 这里的DB可以认为就是boltdb，
 	// TODO 为什么contentStore依赖DB，然而这个DB又依赖contentStore，这不是就是循环依赖了么？ 为什么需要这么设计？
 	db *DB
-	// TODO 共享什么？
+	// 这里指的是内容共享策略，即是否共享镜像层blob这样的资源。
 	shared bool
 	// TODO 这里保护的是那些资源的？
 	l sync.RWMutex

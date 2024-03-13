@@ -59,7 +59,7 @@ func (lm *leaseManager) Create(ctx context.Context, opts ...leases.Opt) (leases.
 			return leases.Lease{}, err
 		}
 	}
-	if l.ID == "" {
+	if l.ID == "" { // 必须要设置leaseID
 		return leases.Lease{}, errors.New("lease id must be provided")
 	}
 
@@ -517,9 +517,7 @@ func parseLeaseResource(r leases.Resource) ([]string, string, error) {
 	)
 
 	switch k := keys[0]; k {
-	case string(bucketKeyObjectContent),
-		string(bucketKeyObjectIngests):
-
+	case string(bucketKeyObjectContent), string(bucketKeyObjectIngests):
 		if len(keys) != 1 {
 			return nil, "", fmt.Errorf("invalid resource type %s: %w", typ, errdefs.ErrInvalidArgument)
 		}

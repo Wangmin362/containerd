@@ -475,6 +475,8 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 	// load additional plugins that don't automatically register themselves
 	// TODO content插件究竟干了啥？
 	// TODO 这个插件和content-service插件有何区别？
+	// TODO 为什么需要在这里单独初始化内容插件，完全可以像其他插件一样通过init文件进行初始化，然后借助plugin.Graph()函数
+	// 通过插件的依赖性排序？？？
 	plugin.Register(&plugin.Registration{
 		Type: plugin.ContentPlugin,
 		ID:   "content",

@@ -207,7 +207,9 @@ func WithLabels(labels map[string]string) Opt {
 
 // WriterOpts is internally used by WriterOpt.
 type WriterOpts struct {
-	Ref  string
+	// TODO 这里的ref的格式大概长什么样子？
+	Ref string
+	// OCI规范中的描述符
 	Desc ocispec.Descriptor
 }
 

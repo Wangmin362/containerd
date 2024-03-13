@@ -31,8 +31,8 @@ func init() {
 		Type: plugin.LeasePlugin,
 		ID:   "manager",
 		Requires: []plugin.Type{
-			plugin.MetadataPlugin,
-			plugin.GCPlugin,
+			plugin.MetadataPlugin, // 本质上就是通过元数据插件实现的
+			plugin.GCPlugin,       // 需要借助垃圾收集的能力
 		},
 		InitFn: func(ic *plugin.InitContext) (interface{}, error) {
 			m, err := ic.Get(plugin.MetadataPlugin)
@@ -45,7 +45,7 @@ func init() {
 			}
 			return &local{
 				// LeaseManager实现对于Lease资源对象的增删改查
-				Manager: metadata.NewLeaseManager(m.(*metadata.DB)),
+				Manager: metadata.NewLeaseManager(m.(*metadata.DB)), // 这里直接强制转换
 				gc:      g.(gcScheduler),
 			}, nil
 		},

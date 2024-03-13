@@ -62,6 +62,7 @@ func (e *Envelope) Field(fieldpath []string) (string, bool) {
 }
 
 // Event is a generic interface for any type of event
+// TODO 分析containerd中的event原理
 type Event interface{}
 
 // Publisher posts the event.

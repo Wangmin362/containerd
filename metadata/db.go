@@ -83,7 +83,7 @@ type dbOptions struct {
 // 1、DB对象是通过boltdb抽象的一个元数据数据库，用于保存镜像、容器、名称空间、快照、内容数据(镜像层数据)的元信息。
 type DB struct {
 	db *bolt.DB
-	// TODO 这里的key是什么？
+	// 这里的key就是快照插件的名字
 	ss map[string]*snapshotter
 	cs *contentStore
 
@@ -121,7 +121,12 @@ type DB struct {
 
 // NewDB creates a new metadata database using the provided
 // bolt database, content store, and snapshotters.
-func NewDB(db *bolt.DB, cs content.Store, ss map[string]snapshots.Snapshotter, opts ...DBOpt) *DB {
+func NewDB(
+	db *bolt.DB, // boltdb
+	cs content.Store, // 内容插件，用于保存镜像层blob数据
+	ss map[string]snapshots.Snapshotter, // 快照插件
+	opts ...DBOpt, // boltdb的参数配置
+) *DB {
 	m := &DB{
 		db:      db,
 		ss:      make(map[string]*snapshotter, len(ss)),
@@ -136,6 +141,7 @@ func NewDB(db *bolt.DB, cs content.Store, ss map[string]snapshots.Snapshotter, o
 	}
 
 	// Initialize data stores
+	// 实例化内容存储，用于保存元数据的同时，保存镜像层blob数据
 	m.cs = newContentStore(m, m.dbopts.shared, cs)
 	for name, sn := range ss {
 		m.ss[name] = newSnapshotter(m, name, sn)
