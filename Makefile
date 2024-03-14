@@ -155,6 +155,7 @@ CRIDIR=$(OUTPUTDIR)/cri
 # Forcibly set the default goal to all, in case an include above brought in a rule definition.
 .DEFAULT_GOAL := all
 
+# 用于编译ctr containerd containerd-stress三个工程的命令
 all: binaries
 
 check: proto-fmt ## run all linters

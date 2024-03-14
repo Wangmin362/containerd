@@ -502,14 +502,14 @@ func LoadPlugins(ctx context.Context, config *srvconfig.Config) ([]*plugin.Regis
 
 		// TODO 为什么代理插件只支持snapshot, content类型插件？
 		switch proxyPlugin.Type {
-		case plugin.SnapshotPlugin, "snapshot":
+		case string(plugin.SnapshotPlugin), "snapshot":
 			t = plugin.SnapshotPlugin
 			ssname := name
 			f = func(conn *grpc.ClientConn) interface{} {
 				return ssproxy.NewSnapshotter(ssapi.NewSnapshotsClient(conn), ssname)
 			}
 
-		case plugin.ContentPlugin, "content":
+		case string(plugin.ContentPlugin), "content":
 			t = plugin.ContentPlugin
 			f = func(conn *grpc.ClientConn) interface{} {
 				return csproxy.NewContentStore(csapi.NewContentClient(conn))
