@@ -44,20 +44,23 @@ import (
 	"google.golang.org/grpc/grpclog"
 )
 
-var extraCmds = []cli.Command{}
+// TODO 目前看来，shim会注册到这里面
+var extraCmds []cli.Command
 
 func init() {
 	// Discard grpc logs so that they don't mess with our stdio
+	// TODO 初始化日志
 	grpclog.SetLoggerV2(grpclog.NewLoggerV2(io.Discard, io.Discard, io.Discard))
 
 	cli.VersionPrinter = func(c *cli.Context) {
+		// 打印版本的格式
 		fmt.Println(c.App.Name, version.Package, c.App.Version)
 	}
 }
 
 // New returns a *cli.App instance.
 func New() *cli.App {
-	app := cli.NewApp()
+	app := cli.NewApp() // 实例化一个命令行工具
 	app.Name = "ctr"
 	app.Version = version.Version
 	app.Description = `
@@ -81,24 +84,24 @@ containerd CLI
 			Usage: "Enable debug output in logs",
 		},
 		cli.StringFlag{
-			Name:   "address, a",
+			Name:   "address, a", // 用于指定containerd的grpc socket, 默认值为：/run/containerd/containerd.sock
 			Usage:  "Address for containerd's GRPC server",
 			Value:  defaults.DefaultAddress,
 			EnvVar: "CONTAINERD_ADDRESS",
 		},
 		cli.DurationFlag{
-			Name:  "timeout",
+			Name:  "timeout", // TODO 什么超时时间？  默认值为0秒
 			Usage: "Total timeout for ctr commands",
 		},
 		cli.DurationFlag{
-			Name:  "connect-timeout",
+			Name:  "connect-timeout", // 默认值为0秒
 			Usage: "Timeout for connecting to containerd",
 		},
 		cli.StringFlag{
-			Name:   "namespace, n",
+			Name:   "namespace, n", // 用于指定当前需要使用的名称空间，在containerd中，所有的资源都是名称空间级别的
 			Usage:  "Namespace to use with commands",
-			Value:  namespaces.Default,
-			EnvVar: namespaces.NamespaceEnvVar,
+			Value:  namespaces.Default,         // 如果没有设置，默认就是default名称空间
+			EnvVar: namespaces.NamespaceEnvVar, // 我们可以通过CONTAINERD_NAMESPACE环境变量指定这个参数，而不用每次显式指定
 		},
 	}
 	app.Commands = append([]cli.Command{
@@ -120,7 +123,7 @@ containerd CLI
 		info.Command,
 	}, extraCmds...)
 	app.Before = func(context *cli.Context) error {
-		if context.GlobalBool("debug") {
+		if context.GlobalBool("debug") { // 如果设置了debug参数，就直接把日志设置为debug级别的
 			logrus.SetLevel(logrus.DebugLevel)
 		}
 		return nil

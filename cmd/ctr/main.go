@@ -32,14 +32,19 @@ var pluginCmds = []cli.Command{}
 func init() {
 	//nolint:staticcheck // Global math/rand seed is deprecated, but still used by external dependencies
 	seed.WithTimeAndRand()
+	// 注册SHA256摘要算法  TODO 可以看成是golang单例模式的一种，使用全局变量保存此摘要算法，全局只会实例化一个
+	// TODO 简单的看了一下这个库的实现，这个库实现的sha256并没有加锁，为什么不需要考虑线程安全？
 	crypto.RegisterHash(crypto.SHA256, hasher.NewSHA256)
 }
 
 func main() {
-	app := app.New()
-	app.Commands = append(app.Commands, pluginCmds...)
-	if err := app.Run(os.Args); err != nil {
+	ctr := app.New() // 实例化应用，其实就是ctr命令行工具
+	ctr.Commands = append(ctr.Commands, pluginCmds...)
+	if err := ctr.Run(os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "ctr: %s\n", err)
+		// 只要出错，就退出程序，退出码为1
 		os.Exit(1)
 	}
+
+	// 如果正常返回的话，退出码为0
 }

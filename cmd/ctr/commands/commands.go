@@ -31,15 +31,15 @@ var (
 	// SnapshotterFlags are cli flags specifying snapshotter names
 	SnapshotterFlags = []cli.Flag{
 		cli.StringFlag{
-			Name:   "snapshotter",
+			Name:   "snapshotter", // 用于设置快照插件的名字，如果没有设置就是用默认值
 			Usage:  "Snapshotter name. Empty value stands for the default value.",
-			EnvVar: "CONTAINERD_SNAPSHOTTER",
+			EnvVar: "CONTAINERD_SNAPSHOTTER", // 可以通过此环境变量设置使用的快照插件
 		},
 	}
 
 	// SnapshotterLabels are cli flags specifying labels which will be added to the new snapshot for container.
 	SnapshotterLabels = cli.StringSliceFlag{
-		Name:  "snapshotter-label",
+		Name:  "snapshotter-label", // 用于设置快照标签  TODO 这里应该可以设置一组KV键值对
 		Usage: "Labels added to the new snapshot for this container.",
 	}
 
@@ -95,6 +95,7 @@ var (
 	}
 
 	// ContainerFlags are cli flags specifying container options
+	// 容器相关的参数
 	ContainerFlags = []cli.Flag{
 		cli.StringFlag{
 			Name:  "config,c",

@@ -54,19 +54,24 @@ var Command = cli.Command{
 }
 
 var createCommand = cli.Command{
-	Name:           "create",
-	Usage:          "Create container",
+	Name:  "create",
+	Usage: "Create container",
+	// ctr containers create [command options] [flags] Image|RootFS CONTAINER [COMMAND] [ARG...]
+	// TODO 1、options和flags有何区别？似乎没有看到flag有哪些，都合并到了options当中，似乎flags并没有用，我怀疑是这里的文档没有更新
+	// Image|RootFS说的是，你要么指定一个镜像名，要么指定要启动容器的RootFS，也就是根文件系统
+	// TODO CONTAINER 这个含义表示的是什么？
+	// COMMAND指的是容器的启动命令  ARG则是容器的启动参数
 	ArgsUsage:      "[flags] Image|RootFS CONTAINER [COMMAND] [ARG...]",
 	SkipArgReorder: true,
 	Flags:          append(append(commands.SnapshotterFlags, []cli.Flag{commands.SnapshotterLabels}...), commands.ContainerFlags...),
-	Action: func(context *cli.Context) error {
+	Action: func(context *cli.Context) error { // 顾名思义，就是当用户执行这个命令的时候程序需要执行的动作
 		var (
 			id     string
 			ref    string
-			config = context.IsSet("config")
+			config = context.IsSet("config") // config用于设置运行时容器的spec，这个spec肯定需要符合OCI RuntimeSpec规范定义
 		)
 
-		if config {
+		if config { // 如果用户设置了容器运行时spec，那么就需要使用用户自定义的
 			id = context.Args().First()
 			if context.NArg() > 1 {
 				return fmt.Errorf("with spec config file, only container id should be provided: %w", errdefs.ErrInvalidArgument)
