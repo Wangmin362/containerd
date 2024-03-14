@@ -85,15 +85,35 @@ var platformRunFlags = []cli.Flag{
 }
 
 // NewContainer creates a new container
-func NewContainer(ctx gocontext.Context, client *containerd.Client, context *cli.Context) (containerd.Container, error) {
+func NewContainer(
+	ctx gocontext.Context,
+	client *containerd.Client,
+	context *cli.Context, // 命令行框架uvfave的上下文，其中包含了用户命令、参数相关的信息
+) (containerd.Container, error) {
 	var (
-		id     string
+		// 容器ID，由用户创建容器的时候设置，譬如ctr c create docker.io/library/nginx:latest mynginx; 譬如其中的mynginx
+		// 就是用户创建容器时设置的容器ID
+		id string
+		// 用于设置容器运行时的spec，这个spec需要符合OCI RuntimeSpec规范, 譬如可以像如下这样设置
+		/*
+			{
+			    "ociVersion": "0.2.0",
+			    "id": "oci-container1",
+			    "status": "running",
+			    "pid": 4422,
+			    "bundle": "/containers/redis",
+			    "annotations": {
+			        "myKey": "myValue"
+			    }
+			}
+
+		*/
 		config = context.IsSet("config")
 	)
 	if config {
-		id = context.Args().First()
+		id = context.Args().First() // 获取用户设置的容器ID
 	} else {
-		id = context.Args().Get(1)
+		id = context.Args().Get(1) //
 	}
 
 	var (

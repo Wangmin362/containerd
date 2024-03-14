@@ -54,7 +54,11 @@ func AppContext(context *cli.Context) (gocontext.Context, gocontext.CancelFunc) 
 }
 
 // NewClient returns a new containerd client
-func NewClient(context *cli.Context, opts ...containerd.ClientOpt) (*containerd.Client, gocontext.Context, gocontext.CancelFunc, error) {
+func NewClient(context *cli.Context, opts ...containerd.ClientOpt) (
+	*containerd.Client,
+	gocontext.Context,
+	gocontext.CancelFunc,
+	error) {
 	// TODO connect-timeout时间在哪里设置的？
 	timeoutOpt := containerd.WithTimeout(context.GlobalDuration("connect-timeout"))
 	opts = append(opts, timeoutOpt)
