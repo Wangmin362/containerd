@@ -59,7 +59,7 @@ var createCommand = cli.Command{
 	// ctr containers create [command options] [flags] Image|RootFS CONTAINER [COMMAND] [ARG...]
 	// TODO 1、options和flags有何区别？似乎没有看到flag有哪些，都合并到了options当中，似乎flags并没有用，我怀疑是这里的文档没有更新
 	// Image|RootFS说的是，你要么指定一个镜像名，要么指定要启动容器的RootFS，也就是根文件系统
-	// TODO CONTAINER 这个含义表示的是什么？
+	// CONTAINER 代表容器的ID，如果不设置，则为空
 	// COMMAND指的是容器的启动命令  ARG则是容器的启动参数
 	ArgsUsage:      "[flags] Image|RootFS CONTAINER [COMMAND] [ARG...]",
 	SkipArgReorder: true,
@@ -77,8 +77,8 @@ var createCommand = cli.Command{
 				return fmt.Errorf("with spec config file, only container id should be provided: %w", errdefs.ErrInvalidArgument)
 			}
 		} else {
-			id = context.Args().Get(1)
-			ref = context.Args().First()
+			id = context.Args().Get(1)   // 容器ID，其实就是CONTAINER参数
+			ref = context.Args().First() // 使用的镜像名
 			if ref == "" {
 				return fmt.Errorf("image ref must be provided: %w", errdefs.ErrInvalidArgument)
 			}
