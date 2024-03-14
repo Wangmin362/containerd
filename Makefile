@@ -247,6 +247,7 @@ $(GO) build ${DEBUG_GO_GCFLAGS} ${GO_GCFLAGS} ${GO_BUILD_FLAGS} -o $@ ${GO_LDFLA
 endef
 
 # Build a binary from a cmd.
+# 用于构建二进制包，ctr containerd就是在这里编译的
 bin/%: cmd/% FORCE
 	$(call BUILD_BINARY)
 
@@ -486,3 +487,13 @@ verify-vendor: ## verify if all the go.mod/go.sum files are up-to-date
 
 help: ## this help
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST) | sort
+
+debug-ctr:
+	make GODEBUG=true bin/ctr
+	dlv --listen=:22345 --headless=true --api-version=2 --accept-multiclient exec bin/ctr -- image ls -q
+
+debug-containerd:
+	make GODEBUG=true bin/containerd
+	dlv --listen=:12345 --headless=true --api-version=2 --accept-multiclient exec bin/containerd -- --log-level=trace
+
+
