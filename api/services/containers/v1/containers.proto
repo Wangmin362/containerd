@@ -41,6 +41,7 @@ option go_package = "github.com/containerd/containerd/api/services/containers/v1
 // is invariant of the runtime state of the container. If it has to do with
 // runtime, or changes as the "container" is started and stops, it probably
 // doesn't belong on this object.
+// 实现对于容器的增删改查
 service Containers {
 	// 根据容器id查询容器
 	rpc Get(GetContainerRequest) returns (GetContainerResponse);

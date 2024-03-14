@@ -69,10 +69,12 @@ func (l *local) Delete(ctx context.Context, lease leases.Lease, opts ...leases.D
 		}
 	}
 
+	// 删除Lease资源
 	if err := l.Manager.Delete(ctx, lease); err != nil {
 		return err
 	}
 
+	// 出发垃圾回收
 	if do.Synchronous {
 		if _, err := l.gc.ScheduleAndWait(ctx); err != nil {
 			return err
