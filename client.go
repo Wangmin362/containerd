@@ -217,7 +217,7 @@ func NewWithConn(conn *grpc.ClientConn, opts ...ClientOpt) (*Client, error) {
 type Client struct {
 	services
 	connMu    sync.Mutex
-	conn      *grpc.ClientConn
+	conn      *grpc.ClientConn // 和containerd之间的grpc连接
 	runtime   string
 	defaultns string // 默认的名称空间
 	platform  platforms.MatchComparer
@@ -282,10 +282,12 @@ func (c *Client) Containers(ctx context.Context, filters ...string) ([]Container
 // NewContainer will create a new container with the provided id.
 // The id must be unique within the namespace.
 func (c *Client) NewContainer(ctx context.Context, id string, opts ...NewContainerOpts) (Container, error) {
+	// TODO 创建了一个lease, 这个lease到底有啥用？
 	ctx, done, err := c.WithLease(ctx)
 	if err != nil {
 		return nil, err
 	}
+	// 用于删除lease
 	defer done(ctx)
 
 	container := containers.Container{
@@ -294,15 +296,17 @@ func (c *Client) NewContainer(ctx context.Context, id string, opts ...NewContain
 			Name: c.runtime,
 		},
 	}
-	for _, o := range opts {
+	for _, o := range opts { // 设置容器的各种参数
 		if err := o(ctx, c, &container); err != nil {
 			return nil, err
 		}
 	}
+	// 创建容器
 	r, err := c.ContainerService().Create(ctx, container)
 	if err != nil {
 		return nil, err
 	}
+
 	return containerFromRecord(c, r), nil
 }
 

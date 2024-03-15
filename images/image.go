@@ -75,6 +75,7 @@ func SynchronousDelete() DeleteOpt {
 
 // Store and interact with images
 type Store interface {
+	// Get 根据指定的镜像名获取镜像详情信息
 	Get(ctx context.Context, name string) (Image, error)
 	List(ctx context.Context, filters ...string) ([]Image, error)
 	Create(ctx context.Context, image Image) (Image, error)

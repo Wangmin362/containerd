@@ -40,6 +40,7 @@ import (
 func withMounts(context *cli.Context) oci.SpecOpts {
 	return func(ctx gocontext.Context, client oci.Client, container *containers.Container, s *specs.Spec) error {
 		mounts := make([]specs.Mount, 0)
+		// 解析挂载参数，这个挂载参数的格式类似于我们启动docker容器时设置volume的格式，用于把宿主机的目录映射到容器的内部
 		for _, mount := range context.StringSlice("mount") {
 			m, err := parseMountFlag(mount)
 			if err != nil {
@@ -164,6 +165,7 @@ var Command = cli.Command{
 			return err
 		}
 		defer cancel()
+		// 先创建一个容器
 		container, err := NewContainer(ctx, client, context)
 		if err != nil {
 			return err
@@ -188,6 +190,7 @@ var Command = cli.Command{
 
 		opts := tasks.GetNewTaskOpts(context)
 		ioOpts := []cio.Opt{cio.WithFIFODir(context.String("fifo-dir"))}
+		// 再创建一个任务启动容器
 		task, err := tasks.NewTask(ctx, client, container, context.String("checkpoint"), con, context.Bool("null-io"), context.String("log-uri"), ioOpts, opts...)
 		if err != nil {
 			return err

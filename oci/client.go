@@ -25,6 +25,7 @@ import (
 )
 
 // Client interface used by SpecOpt
+// 拿到获取快照增删改查客户端
 type Client interface {
 	SnapshotService(snapshotterName string) snapshots.Snapshotter
 }

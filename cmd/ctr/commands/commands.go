@@ -228,9 +228,11 @@ func ObjectWithLabelArgs(clicontext *cli.Context) (string, map[string]string) {
 }
 
 // LabelArgs returns a map of label key,value pairs
+// 把数组转换为map
 func LabelArgs(labelStrings []string) map[string]string {
 	labels := make(map[string]string, len(labelStrings))
 	for _, label := range labelStrings {
+		// 如果一个参数没有找到等号，说明这个参数是一个布尔值
 		key, value, ok := strings.Cut(label, "=")
 		if !ok {
 			value = "true"

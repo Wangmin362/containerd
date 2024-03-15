@@ -36,9 +36,11 @@ import (
 )
 
 // DeleteOpts allows the caller to set options for the deletion of a container
+// 删除容器则不需要修改容器的参数
 type DeleteOpts func(ctx context.Context, client *Client, c containers.Container) error
 
 // NewContainerOpts allows the caller to set additional options when creating a container
+// 之所以容器是通过指针传递，估计是因为创建容器时会不全容器的某些参数
 type NewContainerOpts func(ctx context.Context, client *Client, c *containers.Container) error
 
 // UpdateContainerOpts allows the caller to set additional options when updating a container

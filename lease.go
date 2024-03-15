@@ -27,11 +27,13 @@ import (
 func (c *Client) WithLease(ctx context.Context, opts ...leases.Opt) (context.Context, func(context.Context) error, error) {
 	nop := func(context.Context) error { return nil }
 
+	// 从上下文中获取租约
 	_, ok := leases.FromContext(ctx)
 	if ok {
 		return ctx, nop, nil
 	}
 
+	// 获取租约管理器
 	ls := c.LeasesService()
 
 	if len(opts) == 0 {
@@ -42,13 +44,16 @@ func (c *Client) WithLease(ctx context.Context, opts ...leases.Opt) (context.Con
 		}
 	}
 
+	// 直接创建一个租约
 	l, err := ls.Create(ctx, opts...)
 	if err != nil {
 		return ctx, nop, err
 	}
 
+	// 把租约放到上下文当中
 	ctx = leases.WithLease(ctx, l.ID)
 	return ctx, func(ctx context.Context) error {
+		// 删除租约
 		return ls.Delete(ctx, l)
 	}, nil
 }

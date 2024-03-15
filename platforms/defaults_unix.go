@@ -25,6 +25,7 @@ import (
 )
 
 // DefaultSpec returns the current platform's default platform specification.
+// 获取默认的OCI运行时配置，可以看到，这里指定的参数还是非常的少的
 func DefaultSpec() specs.Platform {
 	return specs.Platform{
 		OS:           runtime.GOOS,

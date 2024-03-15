@@ -110,34 +110,70 @@ func NewContainer(
 		*/
 		config = context.IsSet("config")
 	)
-	if config {
+	if config { // 通过不同的参数的设置，从不同的位置获取容器ID
 		id = context.Args().First() // 获取用户设置的容器ID
 	} else {
-		id = context.Args().Get(1) //
+		id = context.Args().Get(1) // 获取用户设置的容器ID
 	}
 
 	var (
-		opts  []oci.SpecOpts
-		cOpts []containerd.NewContainerOpts
+		opts  []oci.SpecOpts                // OCI Spec的各种参数设置
+		cOpts []containerd.NewContainerOpts // TODO 为什么这里需要使用两个来保存
 		spec  containerd.NewContainerOpts
 	)
 
 	if config {
+		// 获取标签 譬如使用ctr c create --label k1=v1,k2=v2  docker.io/library/nginx:latest my-labeld-nginx命令创建容器，
+		// 那么这个容器的变迁就被我设置为了k1=v1,k2=v2
+		// TODO k8s的注解、标签是怎么实现的？
+		/*
+		  通过查看boltdb元数据，我们发现boltdb数据库中存放了创建容器的标签
+		  - v1                                                                                       | Path: v1 → default → containers → my-labeld-nginx → labels
+		    - default                                                                                | Buckets: 0
+		      - containers                                                                           | Pairs: 3
+		        - my-labeld-nginx                                                                    |
+		          - labels                                                                           |
+		            io.containerd.image.config.stop-signal: SIGQUIT                                  |
+		            k1: v1,k2=v2                                                                     |
+		            maintainer: NGINX Docker Maintainers <docker-maint@nginx.com>                    |
+		          + runtime                                                                          |
+		          createdat: 010000000edd7cb2d501635fb2ffff                                          |
+		          image: docker.io/library/nginx:latest                                              |
+		          sandboxid:                                                                         |
+		          snapshotKey: my-labeld-nginx                                                       |
+		          snapshotter: overlayfs                                                             |
+		          spec: 0a3674797065732e636f6e7461696e6572642e696f2f6f70656e636f6e7461696e6572732f727|
+		          updatedat: 010000000edd7cb2d501635fb2ffff                                          |
+		        + mynginx                                                                            |
+		      + content                                                                              |
+		      + images                                                                               |
+		      + leases                                                                               |
+		      + snapshots                                                                            |
+		    version: 06
+		*/
 		cOpts = append(cOpts, containerd.WithContainerLabels(commands.LabelArgs(context.StringSlice("label"))))
+		// 获取用户指定的运行时spec
 		opts = append(opts, oci.WithSpecFromFile(context.String("config")))
 	} else {
 		var (
-			ref = context.Args().First()
+			ref = context.Args().First() // 获取使用的镜像名
 			// for container's id is Args[1]
-			args = context.Args()[2:]
+			args = context.Args()[2:] // 获取剩余的参数
 		)
+		// 1、获取OCI容器默认的运行时配置
+		// 2、设置默认的Devices  TODO 这玩意是啥？
 		opts = append(opts, oci.WithDefaultSpec(), oci.WithDefaultUnixDevices)
+		// 用于在指定的配置文件env-file中设置环境变量
 		if ef := context.String("env-file"); ef != "" {
 			opts = append(opts, oci.WithEnvFile(ef))
 		}
+		// 从这里可以看出来 --env-file以及--env参数是可以同时使用的，只不过--env设置的环境变量的优先级更改，会覆盖--env-file配置文件
+		// 中的环境变量
 		opts = append(opts, oci.WithEnv(context.StringSlice("env")))
+		// TODO 设置mount挂载参数
 		opts = append(opts, withMounts(context))
 
+		// 是否指定了根文件系统，这里通过设置指定根文件系统同事是containerd snapshotter没有管理的根文件系统
 		if context.Bool("rootfs") {
 			rootfs, err := filepath.Abs(ref)
 			if err != nil {
@@ -146,22 +182,27 @@ func NewContainer(
 			opts = append(opts, oci.WithRootFSPath(rootfs))
 			cOpts = append(cOpts, containerd.WithContainerLabels(commands.LabelArgs(context.StringSlice("label"))))
 		} else {
+			// 获取用户指定的快照插件
 			snapshotter := context.String("snapshotter")
 			var image containerd.Image
+			// 根据镜像名查询  TODO 如果此时镜像不存在是否会自动下载？
 			i, err := client.ImageService().Get(ctx, ref)
 			if err != nil {
 				return nil, err
 			}
+			// TODO 设置平台，containerd中的平台有啥用？
 			if ps := context.String("platform"); ps != "" {
 				platform, err := platforms.Parse(ps)
 				if err != nil {
 					return nil, err
 				}
+				// 用于设置镜像的平台信息
 				image = containerd.NewImageWithPlatform(client, i, platforms.Only(platform))
 			} else {
 				image = containerd.NewImage(client, i)
 			}
 
+			// TODO 什么叫做镜像的UnPack，意思是镜像还没有解压缩？
 			unpacked, err := image.IsUnpacked(ctx, snapshotter)
 			if err != nil {
 				return nil, err
@@ -178,6 +219,7 @@ func NewContainer(
 				containerd.WithImageConfigLabels(image),
 				containerd.WithAdditionalContainerLabels(labels),
 				containerd.WithSnapshotter(snapshotter))
+			// TODO 什么是uid, gid是一个Map?
 			if uidmap, gidmap := context.String("uidmap"), context.String("gidmap"); uidmap != "" && gidmap != "" {
 				uidMap, err := parseIDMapping(uidmap)
 				if err != nil {
@@ -204,28 +246,38 @@ func NewContainer(
 				// after creating some mount points on demand.
 				// For some snapshotter, such as overlaybd, it can provide 2 kind of writable snapshot(overlayfs dir or block-device)
 				// by command label values.
+				// TODO 快照标签又是拿来干嘛的？
 				cOpts = append(cOpts, containerd.WithNewSnapshot(id, image,
 					snapshots.WithLabels(commands.LabelArgs(context.StringSlice("snapshotter-label")))))
 			}
 			cOpts = append(cOpts, containerd.WithImageStopSignal(image, "SIGTERM"))
 		}
+		// TODO 为什么要设置为根文件系统为只读模式？  什么场景适合设置？
 		if context.Bool("read-only") {
 			opts = append(opts, oci.WithRootFSReadonly())
 		}
+
+		// 镜像启动的参数
 		if len(args) > 0 {
 			opts = append(opts, oci.WithProcessArgs(args...))
 		}
+
+		// TODO 这玩意应该是通过DockerFile中的WorkDir设置的
 		if cwd := context.String("cwd"); cwd != "" {
 			opts = append(opts, oci.WithProcessCwd(cwd))
 		}
+		// 设置容器进程中的用户
 		if user := context.String("user"); user != "" {
 			opts = append(opts, oci.WithUser(user), oci.WithAdditionalGIDs(user))
 		}
+		// TODO 如何理解Linux的TTY设备？
 		if context.Bool("tty") {
 			opts = append(opts, oci.WithTTY)
 		}
 
+		// 当前容器是否以特权的方式启动
 		privileged := context.Bool("privileged")
+		// TODO 这玩意是什么参数，似乎在ctr container create命令中没有看到这个参数，这个参数似乎并不是给用户使用的
 		privilegedWithoutHostDevices := context.Bool("privileged-without-host-devices")
 		if privilegedWithoutHostDevices && !privileged {
 			return nil, fmt.Errorf("can't use 'privileged-without-host-devices' without 'privileged' specified")
@@ -238,6 +290,7 @@ func NewContainer(
 			}
 		}
 
+		// TODO 设置容器启动的网络模式
 		if context.Bool("net-host") {
 			hostname, err := os.Hostname()
 			if err != nil {
@@ -250,6 +303,7 @@ func NewContainer(
 				oci.WithEnv([]string{fmt.Sprintf("HOSTNAME=%s", hostname)}),
 			)
 		}
+		// TODO 设置OCI注解,这玩意和label有何区别
 		if annoStrings := context.StringSlice("annotation"); len(annoStrings) > 0 {
 			annos, err := commands.AnnotationArgs(annoStrings)
 			if err != nil {
@@ -258,10 +312,12 @@ func NewContainer(
 			opts = append(opts, oci.WithAnnotations(annos))
 		}
 
+		// TODO 似乎也没有看到这个参数的入口 ctr container create命令似乎没有用于指定cni的参数
 		if context.Bool("cni") {
 			cniMeta := &commands.NetworkMetaData{EnableCni: true}
 			cOpts = append(cOpts, containerd.WithContainerExtension(commands.CtrCniMetadataExtension, cniMeta))
 		}
+		// 设置linux capability
 		if caps := context.StringSlice("cap-add"); len(caps) > 0 {
 			for _, cap := range caps {
 				if !strings.HasPrefix(cap, "CAP_") {
@@ -271,6 +327,7 @@ func NewContainer(
 			opts = append(opts, oci.WithAddedCapabilities(caps))
 		}
 
+		// 去除linux capability
 		if caps := context.StringSlice("cap-drop"); len(caps) > 0 {
 			for _, cap := range caps {
 				if !strings.HasPrefix(cap, "CAP_") {
@@ -280,6 +337,7 @@ func NewContainer(
 			opts = append(opts, oci.WithDroppedCapabilities(caps))
 		}
 
+		// TODO seccomp到底是啥？
 		seccompProfile := context.String("seccomp-profile")
 
 		if !context.Bool("seccomp") && seccompProfile != "" {
@@ -294,6 +352,7 @@ func NewContainer(
 			}
 		}
 
+		// 和selinux类似的东西，用于限制用户权限
 		if s := context.String("apparmor-default-profile"); len(s) > 0 {
 			opts = append(opts, apparmor.WithDefaultProfile(s))
 		}
@@ -305,6 +364,7 @@ func NewContainer(
 			opts = append(opts, apparmor.WithProfile(s))
 		}
 
+		// TODO 这个参数如果需要使用的话应该怎么设置？
 		if cpus := context.Float64("cpus"); cpus > 0.0 {
 			var (
 				period = uint64(100000)
@@ -313,10 +373,12 @@ func NewContainer(
 			opts = append(opts, oci.WithCPUCFS(quota, period))
 		}
 
+		// TODO 这个参数如果需要使用的话应该怎么设置？
 		if shares := context.Int("cpu-shares"); shares > 0 {
 			opts = append(opts, oci.WithCPUShares(uint64(shares)))
 		}
 
+		// TODO 这个参数如果需要使用的话应该怎么设置？
 		quota := context.Int64("cpu-quota")
 		period := context.Uint64("cpu-period")
 		if quota != -1 || period != 0 {
@@ -346,6 +408,7 @@ func NewContainer(
 		if context.IsSet("allow-new-privs") {
 			opts = append(opts, oci.WithNewPrivileges)
 		}
+		// TODO 设置cgroup
 		if context.IsSet("cgroup") {
 			// NOTE: can be set to "" explicitly for disabling cgroup.
 			opts = append(opts, oci.WithCgroup(context.String("cgroup")))
@@ -354,10 +417,13 @@ func NewContainer(
 		if limit != 0 {
 			opts = append(opts, oci.WithMemoryLimit(limit))
 		}
+
+		// TODO 这里面指定的device代表啥
 		for _, dev := range context.StringSlice("device") {
 			opts = append(opts, oci.WithDevices(dev, "", "rwm"))
 		}
 
+		// TODO 什么叫做rootfs传播
 		rootfsPropagation := context.String("rootfs-propagation")
 		if rootfsPropagation != "" {
 			opts = append(opts, func(_ gocontext.Context, _ oci.Client, _ *containers.Container, s *oci.Spec) error {
@@ -373,6 +439,7 @@ func NewContainer(
 			})
 		}
 
+		// TODO blackio是啥？
 		if c := context.String("blockio-config-file"); c != "" {
 			if err := blockio.SetConfigFromFile(c, false); err != nil {
 				return nil, fmt.Errorf("blockio-config-file error: %w", err)
@@ -386,6 +453,8 @@ func NewContainer(
 				return nil, fmt.Errorf("blockio-class error: %w", err)
 			}
 		}
+
+		// TODO rdt是啥
 		if c := context.String("rdt-class"); c != "" {
 			opts = append(opts, oci.WithRdt(c, "", ""))
 		}
@@ -394,6 +463,7 @@ func NewContainer(
 		}
 	}
 
+	// 获取容器的运行时，一般就是runc
 	runtimeOpts, err := getRuntimeOptions(context)
 	if err != nil {
 		return nil, err

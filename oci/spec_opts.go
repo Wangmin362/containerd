@@ -44,6 +44,7 @@ import (
 type SpecOpts func(context.Context, Client, *containers.Container, *Spec) error
 
 // Compose converts a sequence of spec operations into a single operation
+// 把各个参数设置组合起来
 func Compose(opts ...SpecOpts) SpecOpts {
 	return func(ctx context.Context, client Client, c *containers.Container, s *Spec) error {
 		for _, o := range opts {
@@ -178,7 +179,9 @@ func WithSpecFromFile(filename string) SpecOpts {
 func WithEnv(environmentVariables []string) SpecOpts {
 	return func(_ context.Context, _ Client, _ *containers.Container, s *Spec) error {
 		if len(environmentVariables) > 0 {
+			// 初始化进程实例，如果此时进程实例不存在的话
 			setProcess(s)
+			// 设置进程的环境变量，可能会覆盖以前的环境变量
 			s.Process.Env = replaceOrAppendEnvValues(s.Process.Env, environmentVariables)
 		}
 		return nil
@@ -1399,12 +1402,14 @@ func withLinuxDevice(path, permissions string, followSymlinks bool) SpecOpts {
 func WithEnvFile(path string) SpecOpts {
 	return func(_ context.Context, _ Client, _ *containers.Container, s *Spec) error {
 		var vars []string
+		// 打开设置的env-file
 		f, err := os.Open(path)
 		if err != nil {
 			return err
 		}
 		defer f.Close()
 
+		// 一行一行的读取配置文件，每一行都应该是key=value的格式
 		sc := bufio.NewScanner(f)
 		for sc.Scan() {
 			vars = append(vars, sc.Text())
